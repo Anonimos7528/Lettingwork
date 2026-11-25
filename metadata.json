@@ -1,0 +1,6 @@
+{
+  "name": "LettingWork",
+  "description": "High-speed cloud file sharing and storage platform with instant direct links, multi-language support, and persistent accounts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

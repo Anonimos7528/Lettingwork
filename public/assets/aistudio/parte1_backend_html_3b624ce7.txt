@@ -1,0 +1,1502 @@
+=== requirements.txt ===
+# LettingWork no tiene dependencias externas.
+# Usa solo la biblioteca estándar de Python 3.
+# (No hay nada que instalar con pip)
+
+=== database.py ===
+import sqlite3
+import os
+import secrets
+import hashlib
+from typing import Optional, Dict, Any, List
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "lettingwork.db")
+
+def get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    if not salt:
+        salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return hashed, salt
+
+def verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    hashed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return secrets.compare_digest(hashed, stored_hash)
+
+def init_db():
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS files (
+                id TEXT PRIMARY KEY,
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                mime_type TEXT,
+                upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                download_count INTEGER DEFAULT 0,
+                delete_token TEXT NOT NULL,
+                user_id TEXT
+            );
+        """)
+        # Safely ensure user_id column exists if table was created in older version
+        try:
+            conn.execute("ALTER TABLE files ADD COLUMN user_id TEXT;")
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+
+def generate_id(prefix: str = "lw_", length: int = 8) -> str:
+    return prefix + secrets.token_urlsafe(length)[:length]
+
+# User Authentication functions
+def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
+    username = username.strip()
+    email = email.strip().lower()
+    if len(username) < 3:
+        raise ValueError("El nombre de usuario debe tener al menos 3 caracteres")
+    if len(password) < 6:
+        raise ValueError("La contraseña debe tener al menos 6 caracteres")
+    if "@" not in email:
+        raise ValueError("Correo electrónico inválido")
+
+    hashed, salt = hash_password(password)
+    user_id = generate_id("usr_", 10)
+
+    with get_connection() as conn:
+        try:
+            conn.execute("""
+                INSERT INTO users (id, username, email, password_hash, salt)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, username, email, hashed, salt))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise ValueError("El nombre de usuario o correo ya está registrado")
+
+    return {"id": user_id, "username": username, "email": email}
+
+def authenticate_user(identifier: str, password: str) -> Optional[Dict[str, Any]]:
+    identifier = identifier.strip().lower()
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, username, email, password_hash, salt 
+            FROM users 
+            WHERE LOWER(username) = ? OR LOWER(email) = ?
+        """, (identifier, identifier))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        if verify_password(password, row["password_hash"], row["salt"]):
+            return {"id": row["id"], "username": row["username"], "email": row["email"]}
+    return None
+
+def create_session(user_id: str) -> str:
+    token = secrets.token_hex(32)
+    with get_connection() as conn:
+        conn.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+        conn.commit()
+    return token
+
+def get_user_by_session(token: str) -> Optional[Dict[str, Any]]:
+    if not token:
+        return None
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT u.id, u.username, u.email, u.created_at
+            FROM sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.token = ?
+        """, (token,))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+    return None
+
+def delete_session(token: str) -> bool:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.commit()
+        return True
+
+def create_or_get_google_user(email: str, name: str) -> Dict[str, Any]:
+    email = email.strip().lower()
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT id, username, email FROM users WHERE LOWER(email) = ?", (email,))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        
+        # New user from Google
+        base_username = name.strip().replace(" ", "_").lower() if name else email.split("@")[0]
+        clean_user = "".join(c for c in base_username if c.isalnum() or c in "_-")[:15] or "google_user"
+        username = clean_user
+        idx = 1
+        while True:
+            cursor = conn.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),))
+            if not cursor.fetchone():
+                break
+            username = f"{clean_user}_{idx}"
+            idx += 1
+
+        user_id = generate_id("usr_", 10)
+        dummy_hash, dummy_salt = hash_password(secrets.token_hex(20))
+        conn.execute("""
+            INSERT INTO users (id, username, email, password_hash, salt)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, username, email, dummy_hash, dummy_salt))
+        conn.commit()
+        return {"id": user_id, "username": username, "email": email}
+
+# File operations
+def save_file_metadata(original_name: str, stored_name: str, size_bytes: int, mime_type: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    file_id = generate_id()
+    delete_token = secrets.token_hex(16)
+    
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (file_id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id))
+        conn.commit()
+        
+    return {
+        "id": file_id,
+        "original_name": original_name,
+        "size_bytes": size_bytes,
+        "mime_type": mime_type,
+        "delete_token": delete_token,
+        "user_id": user_id
+    }
+
+def get_file_by_id(file_id: str) -> Optional[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+    return None
+
+def increment_download_count(file_id: str):
+    with get_connection() as conn:
+        conn.execute("UPDATE files SET download_count = download_count + 1 WHERE id = ?", (file_id,))
+        conn.commit()
+
+def delete_file_by_id(file_id: str, delete_token: str) -> Optional[str]:
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT stored_name FROM files WHERE id = ? AND delete_token = ?", (file_id, delete_token))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        
+        stored_name = row["stored_name"]
+        conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
+        conn.commit()
+        return stored_name
+
+def get_recent_files(limit: int = 10) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, original_name, size_bytes, mime_type, upload_time, download_count 
+            FROM files 
+            ORDER BY upload_time DESC 
+            LIMIT ?
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_user_files(user_id: str) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, original_name, size_bytes, mime_type, upload_time, download_count, delete_token
+            FROM files 
+            WHERE user_id = ?
+            ORDER BY upload_time DESC
+        """, (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_user_storage_usage(user_id: str) -> int:
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT COALESCE(SUM(size_bytes), 0) as total FROM files WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return row["total"] if row else 0
+
+=== server.py ===
+import http.server
+import socketserver
+import os
+import urllib.parse
+import json
+import uuid
+import mimetypes
+import email
+import email.policy
+from database import (
+    init_db,
+    save_file_metadata,
+    get_file_by_id,
+    increment_download_count,
+    delete_file_by_id,
+    get_recent_files,
+    create_user,
+    authenticate_user,
+    create_session,
+    get_user_by_session,
+    delete_session,
+    get_user_files,
+    get_user_storage_usage,
+    create_or_get_google_user
+)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+PORT = int(os.environ.get("PORT", 8080))
+
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(TEMPLATES_DIR, exist_ok=True)
+
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+class LettingWorkHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def get_session_token(self) -> str | None:
+        # 1. Check Authorization header
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return auth_header[7:].strip()
+
+        # 2. Check X-Auth-Token header
+        x_token = self.headers.get("X-Auth-Token")
+        if x_token:
+            return x_token.strip()
+
+        # 3. Check Cookies
+        cookie_header = self.headers.get("Cookie", "")
+        if cookie_header:
+            cookies = cookie_header.split(";")
+            for c in cookies:
+                c = c.strip()
+                if c.startswith("lw_session="):
+                    return c[11:].strip()
+        return None
+
+    def get_current_user(self):
+        token = self.get_session_token()
+        if token:
+            return get_user_by_session(token)
+        return None
+
+    def send_json(self, status_code: int, data: dict, set_cookie: str = None):
+        body = json.dumps(data).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        if set_cookie:
+            self.send_header("Set-Cookie", set_cookie)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_file_response(self, file_path: str, content_type: str = "application/octet-stream", download_name: str = None):
+        if not os.path.isfile(file_path):
+            self.send_error(404, "File not found on disk")
+            return
+
+        file_size = os.path.getsize(file_path)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(file_size))
+        self.send_header("Accept-Ranges", "bytes")
+        
+        if download_name:
+            # RFC 5987 / 6266 encoding for international character sets
+            encoded_name = urllib.parse.quote(download_name.encode('utf-8'))
+            ascii_name = download_name.encode('ascii', 'replace').decode('ascii').replace('"', '')
+            self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}')
+        
+        self.end_headers()
+
+        with open(file_path, "rb") as f:
+            while chunk := f.read(64 * 1024):
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Filename, X-Delete-Token, Authorization, X-Auth-Token")
+        self.end_headers()
+
+    def do_GET(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        # 1. Home page
+        if path == "/" or path == "/index.html":
+            index_path = os.path.join(TEMPLATES_DIR, "index.html")
+            self.send_file_response(index_path, "text/html; charset=utf-8")
+            return
+
+        # 2. File share/download landing page: /f/<file_id>
+        if path.startswith("/f/"):
+            download_template = os.path.join(TEMPLATES_DIR, "download.html")
+            self.send_file_response(download_template, "text/html; charset=utf-8")
+            return
+
+        # 3. Auth API: Get current user session
+        if path == "/api/auth/me":
+            user = self.get_current_user()
+            if user:
+                storage_used = get_user_storage_usage(user["id"])
+                self.send_json(200, {
+                    "authenticated": True,
+                    "user": {
+                        "id": user["id"],
+                        "username": user["username"],
+                        "email": user["email"],
+                        "created_at": user["created_at"],
+                        "storage_used_bytes": storage_used
+                    }
+                })
+            else:
+                self.send_json(200, {"authenticated": False})
+            return
+
+        # 4. User Files API: List user's private files
+        if path == "/api/user/files":
+            user = self.get_current_user()
+            if not user:
+                self.send_json(401, {"success": False, "error": "No autenticado"})
+                return
+            files = get_user_files(user["id"])
+            storage_used = get_user_storage_usage(user["id"])
+            self.send_json(200, {
+                "success": True,
+                "files": files,
+                "storage_used_bytes": storage_used
+            })
+            return
+
+        # 5. API: Get file metadata
+        if path.startswith("/api/info/"):
+            file_id = path[10:].strip("/")
+            file_info = get_file_by_id(file_id)
+            if not file_info:
+                self.send_json(404, {"success": False, "error": "El archivo no existe o ha sido eliminado"})
+                return
+            
+            safe_info = {
+                "id": file_info["id"],
+                "original_name": file_info["original_name"],
+                "size_bytes": file_info["size_bytes"],
+                "mime_type": file_info["mime_type"],
+                "upload_time": file_info["upload_time"],
+                "download_count": file_info["download_count"]
+            }
+            self.send_json(200, {"success": True, "file": safe_info})
+            return
+
+        # 6. API: Download binary file
+        if path.startswith("/api/download/"):
+            file_id = path[14:].strip("/")
+            file_info = get_file_by_id(file_id)
+            if not file_info:
+                self.send_error(404, "Archivo no encontrado")
+                return
+
+            disk_path = os.path.join(UPLOADS_DIR, file_info["stored_name"])
+            if not os.path.exists(disk_path):
+                self.send_error(404, "El archivo físico no se encuentra en el servidor")
+                return
+
+            increment_download_count(file_id)
+            mime_type = file_info["mime_type"] or "application/octet-stream"
+            self.send_file_response(disk_path, mime_type, file_info["original_name"])
+            return
+
+        # 7. API: Public recent files (for guest preview)
+        if path == "/api/recent":
+            files = get_recent_files(10)
+            self.send_json(200, {"success": True, "files": files})
+            return
+
+        # 8. Static files
+        if path.startswith("/static/"):
+            clean_subpath = path[8:].lstrip("/")
+            full_path = os.path.abspath(os.path.join(STATIC_DIR, clean_subpath))
+            if full_path.startswith(STATIC_DIR) and os.path.isfile(full_path):
+                mime, _ = mimetypes.guess_type(full_path)
+                self.send_file_response(full_path, mime or "application/octet-stream")
+                return
+            else:
+                self.send_error(404, "Recurso no encontrado")
+                return
+
+        self.send_error(404, "Ruta no encontrada")
+
+    def do_POST(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        # 1. Auth: Register
+        if path == "/api/auth/register":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if not content_length:
+                self.send_json(400, {"success": False, "error": "Petición vacía"})
+                return
+
+            try:
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                username = body.get("username", "").strip()
+                email = body.get("email", "").strip()
+                password = body.get("password", "").strip()
+
+                user = create_user(username, email, password)
+                token = create_session(user["id"])
+                cookie = f"lw_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
+
+                self.send_json(200, {
+                    "success": True,
+                    "token": token,
+                    "user": user
+                }, set_cookie=cookie)
+            except ValueError as ve:
+                self.send_json(400, {"success": False, "error": str(ve)})
+            except Exception as e:
+                self.send_json(500, {"success": False, "error": "Error interno del servidor"})
+            return
+
+        # 2. Auth: Login
+        if path == "/api/auth/login":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if not content_length:
+                self.send_json(400, {"success": False, "error": "Petición vacía"})
+                return
+
+            try:
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                identifier = body.get("identifier", "").strip()
+                password = body.get("password", "").strip()
+
+                user = authenticate_user(identifier, password)
+                if not user:
+                    self.send_json(401, {"success": False, "error": "Credenciales inválidas. Revisa usuario/email o contraseña"})
+                    return
+
+                token = create_session(user["id"])
+                cookie = f"lw_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
+
+                self.send_json(200, {
+                    "success": True,
+                    "token": token,
+                    "user": user
+                }, set_cookie=cookie)
+            except Exception as e:
+                self.send_json(500, {"success": False, "error": "Error al procesar inicio de sesión"})
+            return
+
+        # 2.5 Auth: Google Sign-In
+        if path == "/api/auth/google":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if not content_length:
+                self.send_json(400, {"success": False, "error": "Petición vacía"})
+                return
+
+            try:
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                email = body.get("email", "").strip()
+                name = body.get("name", "").strip()
+
+                if not email or "@" not in email:
+                    self.send_json(400, {"success": False, "error": "Correo electrónico de Google requerido"})
+                    return
+
+                user = create_or_get_google_user(email, name)
+                token = create_session(user["id"])
+                cookie = f"lw_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
+
+                self.send_json(200, {
+                    "success": True,
+                    "token": token,
+                    "user": user
+                }, set_cookie=cookie)
+            except Exception as e:
+                self.send_json(500, {"success": False, "error": "Error en autenticación con Google"})
+            return
+
+        # 3. Auth: Logout
+        if path == "/api/auth/logout":
+            token = self.get_session_token()
+            if token:
+                delete_session(token)
+            cookie = "lw_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+            self.send_json(200, {"success": True}, set_cookie=cookie)
+            return
+
+        # 4. Upload file
+        if path == "/api/upload":
+            current_user = self.get_current_user()
+            user_id = current_user["id"] if current_user else None
+
+            content_type_header = self.headers.get("Content-Type", "")
+            content_length_header = self.headers.get("Content-Length")
+            
+            if not content_length_header:
+                self.send_json(400, {"success": False, "error": "Cabecera Content-Length requerida"})
+                return
+                
+            content_length = int(content_length_header)
+            
+            # Direct binary stream mode (via X-Filename header)
+            raw_filename_header = self.headers.get("X-Filename")
+            if raw_filename_header:
+                original_name = urllib.parse.unquote(raw_filename_header)
+                if not original_name:
+                    original_name = "archivo_descarga"
+                
+                original_name = os.path.basename(original_name)
+                ext = os.path.splitext(original_name)[1]
+                stored_name = f"{uuid.uuid4().hex}{ext}"
+                dest_path = os.path.join(UPLOADS_DIR, stored_name)
+                
+                bytes_read = 0
+                chunk_size = 64 * 1024
+                
+                with open(dest_path, "wb") as f:
+                    while bytes_read < content_length:
+                        to_read = min(chunk_size, content_length - bytes_read)
+                        chunk = self.rfile.read(to_read)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        bytes_read += len(chunk)
+                        
+                mime_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+                file_meta = save_file_metadata(original_name, stored_name, bytes_read, mime_type, user_id=user_id)
+                
+                self.send_json(200, {
+                    "success": True,
+                    "id": file_meta["id"],
+                    "original_name": file_meta["original_name"],
+                    "size_bytes": file_meta["size_bytes"],
+                    "share_url": f"/f/{file_meta['id']}",
+                    "delete_token": file_meta["delete_token"]
+                })
+                return
+
+            # Multipart/form-data mode
+            if "multipart/form-data" in content_type_header:
+                raw_body = self.rfile.read(content_length)
+                msg_bytes = f"Content-Type: {content_type_header}\r\n\r\n".encode("utf-8") + raw_body
+                msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
+                
+                uploaded_part = None
+                for part in msg.iter_parts():
+                    if part.get_filename():
+                        uploaded_part = part
+                        break
+
+                if not uploaded_part:
+                    self.send_json(400, {"success": False, "error": "No se encontró ningún archivo en la petición"})
+                    return
+
+                original_name = os.path.basename(uploaded_part.get_filename() or "archivo")
+                ext = os.path.splitext(original_name)[1]
+                stored_name = f"{uuid.uuid4().hex}{ext}"
+                dest_path = os.path.join(UPLOADS_DIR, stored_name)
+                
+                file_data = uploaded_part.get_payload(decode=True)
+                with open(dest_path, "wb") as f:
+                    f.write(file_data)
+
+                mime_type = uploaded_part.get_content_type() or mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+                file_meta = save_file_metadata(original_name, stored_name, len(file_data), mime_type, user_id=user_id)
+
+                self.send_json(200, {
+                    "success": True,
+                    "id": file_meta["id"],
+                    "original_name": file_meta["original_name"],
+                    "size_bytes": file_meta["size_bytes"],
+                    "share_url": f"/f/{file_meta['id']}",
+                    "delete_token": file_meta["delete_token"]
+                })
+                return
+
+            self.send_json(400, {"success": False, "error": "Formato de subida no soportado. Usa cabecera X-Filename o multipart/form-data"})
+            return
+
+        self.send_error(404, "Ruta no encontrada")
+
+    def do_DELETE(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        if path.startswith("/api/file/"):
+            file_id = path[10:].strip("/")
+            delete_token = self.headers.get("X-Delete-Token")
+            
+            if not delete_token:
+                content_length = int(self.headers.get("Content-Length", 0))
+                if content_length > 0:
+                    try:
+                        body_data = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                        delete_token = body_data.get("delete_token")
+                    except Exception:
+                        pass
+
+            if not delete_token:
+                self.send_json(400, {"success": False, "error": "Token de borrado requerido (X-Delete-Token)"})
+                return
+
+            stored_name = delete_file_by_id(file_id, delete_token)
+            if not stored_name:
+                self.send_json(403, {"success": False, "error": "Archivo no encontrado o token inválido"})
+                return
+
+            # Remove physical file
+            disk_path = os.path.join(UPLOADS_DIR, stored_name)
+            if os.path.exists(disk_path):
+                try:
+                    os.remove(disk_path)
+                except OSError:
+                    pass
+
+            self.send_json(200, {"success": True, "message": "Archivo eliminado correctamente"})
+            return
+
+        self.send_error(404, "Ruta no encontrada")
+
+def run(port: int = PORT):
+    init_db()
+    httpd = None
+    active_port = port
+    candidate_ports = [port] + [p for p in [8081, 8082, 8000, 3000, 5000] if p != port]
+    for p in candidate_ports:
+        try:
+            server_address = ("", p)
+            httpd = ThreadedHTTPServer(server_address, LettingWorkHandler)
+            active_port = p
+            break
+        except OSError:
+            continue
+
+    if not httpd:
+        raise RuntimeError("No se pudo enlazar a ningún puerto disponible.")
+
+    print(f"==================================================")
+    print(f" LettingWork Cloud Storage v0.1.0 BETA está activo!")
+    print(f" Abre en tu navegador:")
+    print(f"  👉 http://localhost:{active_port}")
+    print(f"==================================================")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServidor detenido.")
+        httpd.server_close()
+
+if __name__ == "__main__":
+    run()
+
+=== templates/index.html ===
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LettingWork - Cloud File Sharing & High-Speed Storage</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Beta Banner -->
+  <div class="beta-banner">
+    <span data-i18n="beta_notice">🚀 LettingWork está actualmente en fase <strong>BETA</strong> (v0.1.0). ¿Encontraste algún error o bug?</span>
+    <a href="https://github.com/ivandoski/lettingwork/issues" target="_blank" data-i18n="beta_report">Repórtalo en GitHub &rarr;</a>
+  </div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <a href="/" class="brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+        </svg>
+      </div>
+      <div>Letting<span class="accent">Work</span><span class="brand-tag">Cloud</span></div>
+    </a>
+
+    <!-- Quick Desktop Links -->
+    <div class="nav-links-desktop">
+      <a href="#about-us" class="nav-link" data-i18n="nav_about">Sobre Nosotros</a>
+      <a href="#recent-section" class="nav-link" data-i18n="nav_files">Mis Archivos</a>
+    </div>
+
+    <!-- Nav Actions -->
+    <div class="nav-actions">
+      
+      <!-- Upload File Shortcut Button -->
+      <button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span data-i18n="nav_upload">Subir Archivo</span>
+      </button>
+
+      <!-- Language Dropdown (7 Languages) -->
+      <div class="lang-dropdown-wrapper">
+        <button id="lang-menu-btn" class="lang-btn" onclick="toggleLangMenu()" aria-label="Cambiar idioma">
+          <span id="current-lang-flag">🇪🇸</span>
+          <span id="current-lang-text">Español</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div id="lang-dropdown" class="lang-dropdown-menu">
+          <button class="lang-option" onclick="selectLanguage('es')"><span>🇪🇸</span> Español</button>
+          <button class="lang-option" onclick="selectLanguage('en')"><span>🇬🇧</span> English</button>
+          <button class="lang-option" onclick="selectLanguage('it')"><span>🇮🇹</span> Italiano</button>
+          <button class="lang-option" onclick="selectLanguage('de')"><span>🇩🇪</span> Deutsch</button>
+          <button class="lang-option" onclick="selectLanguage('fr')"><span>🇫🇷</span> Français</button>
+          <button class="lang-option" onclick="selectLanguage('pt')"><span>🇵🇹</span> Português</button>
+          <button class="lang-option" onclick="selectLanguage('nl-be')"><span>🇧🇪</span> Nederlands (België)</button>
+        </div>
+      </div>
+
+      <!-- Mediafire-Style Menu Drawer Toggle -->
+      <button id="menu-drawer-toggle" class="menu-trigger-btn" onclick="toggleDrawer()" aria-label="Menú">
+        <span class="user-badge-mini" id="nav-avatar-char">G</span>
+        <span id="nav-user-label" data-i18n="nav_menu">Menú</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+    </div>
+  </nav>
+
+  <!-- Mediafire-Style Slide-Out Side Drawer Menu -->
+  <div id="drawer-backdrop" class="drawer-backdrop" onclick="closeDrawer()"></div>
+  <aside id="side-drawer" class="side-drawer">
+    
+    <div class="drawer-header">
+      <div class="drawer-brand">
+        <div class="brand-icon" style="width:28px; height:28px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <span>Letting<span class="accent">Work</span></span>
+      </div>
+      <button class="drawer-close-btn" onclick="closeDrawer()" aria-label="Cerrar menú">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="drawer-body">
+      
+      <!-- User / Guest Profile Card -->
+      <div class="drawer-profile-card" id="drawer-user-card">
+        <div class="drawer-user-meta">
+          <div class="drawer-avatar guest" id="drawer-avatar-display">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <div class="drawer-user-info">
+            <div class="user-name" id="drawer-user-name" data-i18n="drawer_guest_greeting">Modo Invitado</div>
+            <div class="user-sub" id="drawer-user-sub" data-i18n="drawer_guest_desc">Inicia sesión para gestionar tus archivos</div>
+          </div>
+        </div>
+
+        <div class="drawer-auth-buttons" id="drawer-auth-actions">
+          <button class="btn btn-secondary" onclick="openAuthModal('login')" data-i18n="drawer_btn_login">Iniciar Sesión</button>
+          <button class="btn btn-primary" onclick="openAuthModal('register')" data-i18n="drawer_btn_register">Crear Cuenta</button>
+        </div>
+
+        <div id="drawer-logged-actions" style="display:none; margin-top:0.5rem;">
+          <button class="btn btn-danger btn-sm" style="width:100%;" onclick="handleLogout()" data-i18n="drawer_btn_logout">Cerrar Sesión</button>
+        </div>
+      </div>
+
+      <!-- Quick Upload Button in Menu (Mediafire Style) -->
+      <button class="btn btn-primary drawer-upload-btn" onclick="triggerDrawerUpload()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span data-i18n="drawer_btn_upload">Subir Archivos</span>
+      </button>
+
+      <!-- Cloud Storage Meter Widget -->
+      <div class="drawer-storage-widget">
+        <div class="storage-title-row">
+          <div class="storage-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span data-i18n="drawer_storage_title">Almacenamiento Cloud</span>
+          </div>
+          <span class="storage-badge" data-i18n="drawer_storage_plan">Plan Gratuito</span>
+        </div>
+        <div class="storage-bar-track">
+          <div class="storage-bar-fill" id="storage-bar-fill" style="width: 2%;"></div>
+        </div>
+        <div class="storage-desc">
+          <span id="storage-used-text">0.0 MB de 10 GB</span>
+          <span data-i18n="drawer_storage_unmetered">Ilimitado</span>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <ul class="drawer-menu-list">
+        <li class="drawer-menu-item">
+          <a href="#recent-section" onclick="closeDrawer()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <span data-i18n="drawer_nav_my_files">Mis Archivos</span>
+          </a>
+        </li>
+        <li class="drawer-menu-item">
+          <a href="#about-us" onclick="closeDrawer()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span data-i18n="drawer_nav_about">Sobre Nosotros</span>
+          </a>
+        </li>
+        <li class="drawer-menu-item">
+          <a href="#about-us" onclick="closeDrawer()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span data-i18n="drawer_nav_security">Seguridad y Cifrado</span>
+          </a>
+        </li>
+        <li class="drawer-menu-item">
+          <button type="button" style="cursor:default;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span data-i18n="drawer_nav_status">Servidores Operativos</span>
+            <span class="server-dot-pulse"></span>
+          </button>
+        </li>
+      </ul>
+
+    </div>
+
+    <!-- DRAWER FOOTER (Exact requirement: version 0.1.0 and BETA) -->
+    <div class="drawer-footer">
+      <div class="drawer-version-row">
+        <span class="version-text" data-i18n="drawer_version_text">Versión 0.1.0</span>
+        <span class="badge-beta-pill" data-i18n="drawer_badge_beta">BETA</span>
+      </div>
+      <p class="drawer-copy-note">LettingWork &bull; Cloud Storage Network</p>
+    </div>
+
+  </aside>
+
+  <!-- Main Container -->
+  <main class="container">
+    
+    <!-- ========================================================
+         PORTADA OFICIAL (Limpia, sin tapar, con acciones abajo)
+         ======================================================== -->
+    <section class="portada-section">
+      <div class="portada-card">
+        <img src="/static/hero_slide_1.png" alt="Lettingwork Portada Oficial" class="portada-image">
+      </div>
+
+      <!-- Menú y Acciones debajo de la portada -->
+      <div class="portada-menu-bar">
+        <div class="portada-buttons-group">
+          <button class="btn btn-primary btn-lg" onclick="openUploadModal()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span data-i18n="btn_upload_file">Subir Archivo</span>
+          </button>
+          
+          <button class="btn btn-secondary btn-lg" onclick="toggleDrawer()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <span data-i18n="hero_cta_menu">Abrir Menú Lateral</span>
+          </button>
+        </div>
+
+        <a href="https://lettingwork.onrender.com" target="_blank" class="live-web-badge">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span>lettingwork.onrender.com</span>
+        </a>
+      </div>
+
+      <div class="portada-stats-row">
+        <div class="hero-stat-pill">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span data-i18n="hero_stat_speed">Velocidad Gigabit Directa</span>
+        </div>
+        <div class="hero-stat-pill">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span data-i18n="hero_stat_privacy">Token de Borrado Único</span>
+        </div>
+        <div class="hero-stat-pill">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span data-i18n="hero_stat_nowait">0s Esperas ni Captchas</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         ABOUT US SECTION (Imagen Directa de Canva Slide 2)
+         ======================================================== -->
+    <section class="about-section" id="about-us">
+      
+      <div class="about-header">
+        <span class="about-badge" data-i18n="about_badge">Misión y Filosofía</span>
+        <h2 data-i18n="about_title">About Us</h2>
+        <p data-i18n="about_subtitle">Información oficial y filosofía de LettingWork</p>
+      </div>
+
+      <!-- Imagen directa de Slide 2 -->
+      <div class="about-image-card">
+        <img src="/static/hero_slide_2.png" alt="LettingWork About Us Slide" class="about-slide-img">
+      </div>
+
+      <!-- Platform Metrics -->
+      <div class="platform-metrics-row">
+        <div class="metric-card">
+          <div class="metric-num">99.9%</div>
+          <div class="metric-label" data-i18n="metric_uptime">Disponibilidad Uptime</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num">0s</div>
+          <div class="metric-label" data-i18n="metric_queues">Colas de Espera</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num">10 GB</div>
+          <div class="metric-label" data-i18n="metric_limit">Capacidad por Archivo</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num">100%</div>
+          <div class="metric-label" data-i18n="metric_direct">Enlaces Directos</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Recent Uploads / My Files Section -->
+    <section class="recent-section" id="recent-section">
+      <div class="recent-title-row">
+        <div>
+          <h2 data-i18n="recent_title">Tus Subidas Recientes</h2>
+          <div class="recent-subtitle" data-i18n="recent_subtitle">Gestiona, descarga o elimina tus enlaces activos</div>
+        </div>
+      </div>
+      <div id="recent-list" class="file-list"></div>
+    </section>
+
+  </main>
+
+  <!-- ========================================================
+       UPLOAD MODAL (Opened from Menu or "Subir Archivo")
+       ======================================================== -->
+  <div class="modal-overlay" id="upload-modal" onclick="closeUploadModal()">
+    <div class="upload-modal-content" onclick="event.stopPropagation()">
+      
+      <div class="upload-modal-header">
+        <div class="upload-modal-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" color="var(--accent-cyan)">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span data-i18n="upload_modal_title">Subir Archivos a la Nube</span>
+        </div>
+        <button class="modal-close-btn" onclick="closeUploadModal()">✕</button>
+      </div>
+
+      <!-- Upload Drop Zone inside Modal -->
+      <div class="dropzone-card" id="dropzone">
+        <input type="file" id="file-input" class="file-input">
+        <div class="dropzone-icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="dropzone-title" data-i18n="dropzone_title">Arrastra y suelta tu archivo aquí</div>
+        <div class="dropzone-subtitle" data-i18n="dropzone_subtitle">o haz clic para explorar en tu ordenador o móvil</div>
+        <div class="dropzone-hint" data-i18n="dropzone_hint">Soporta archivos de hasta 10 GB sin compresión forzada</div>
+      </div>
+
+      <!-- Live Upload Progress Card -->
+      <div class="progress-container" id="progress-box">
+        <div class="progress-header">
+          <div class="file-meta-preview">
+            <div class="file-meta-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </div>
+            <div class="file-meta-details">
+              <div class="name" id="upload-filename">archivo.zip</div>
+              <div class="size" id="upload-filesize">0 KB</div>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="cancelUpload()" data-i18n="btn_cancel">Cancelar</button>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="progress-transferred">0 MB de 0 MB</span>
+          <span id="progress-percent" style="font-weight:700; color:var(--accent-cyan);">0%</span>
+        </div>
+      </div>
+
+      <!-- Success Card with Share Link -->
+      <div class="success-card" id="success-card">
+        <div class="success-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <span data-i18n="success_ready">¡Tu archivo ya está listo para compartir!</span>
+        </div>
+        
+        <p style="color:var(--text-muted); font-size: 0.95rem; margin-bottom: 0.75rem;" data-i18n="success_copy_desc">
+          Copia este enlace directo para enviárselo a quien quieras:
+        </p>
+
+        <div class="link-box">
+          <input type="text" id="share-link-input" class="link-input" readonly>
+          <button class="btn btn-primary" onclick="copyShareLink()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span data-i18n="btn_copy_link">Copiar Enlace</span>
+          </button>
+        </div>
+
+        <div class="success-actions">
+          <a id="btn-view-page" href="#" class="btn btn-secondary" target="_blank">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            <span data-i18n="btn_open_page">Abrir Página de Descarga</span>
+          </a>
+          <a id="btn-direct-download" href="#" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span data-i18n="btn_direct_download">Descarga Directa</span>
+          </a>
+          <button id="btn-show-qr" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span data-i18n="btn_qr_code">Código QR</span>
+          </button>
+          <button class="btn btn-secondary" onclick="resetUploadUI()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span data-i18n="btn_upload_another">Subir Otro Archivo</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Login / Register Modal Dialog -->
+  <div class="modal-overlay" id="auth-modal" onclick="closeAuthModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="closeAuthModal()">✕</button>
+      
+      <div class="auth-tabs">
+        <button id="tab-btn-login" class="auth-tab-btn active" onclick="switchAuthTab('login')" data-i18n="auth_tab_login">Iniciar Sesión</button>
+        <button id="tab-btn-register" class="auth-tab-btn" onclick="switchAuthTab('register')" data-i18n="auth_tab_register">Crear Cuenta</button>
+      </div>
+
+      <div id="auth-error-alert" class="auth-error-msg"></div>
+
+      <!-- Google Sign In Quick Action -->
+      <div class="google-auth-container">
+        <button type="button" class="btn-google" onclick="openGooglePicker()">
+          <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.34 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.42l4.04-3.15z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+          </svg>
+          <span data-i18n="auth_btn_google">Continuar con Google</span>
+        </button>
+        <div class="auth-divider">
+          <span data-i18n="auth_divider_or">o usa tu cuenta</span>
+        </div>
+      </div>
+
+      <!-- Login Form -->
+      <form id="form-login" onsubmit="submitLogin(event)">
+        <div class="auth-form-group">
+          <label class="auth-label" data-i18n="auth_label_username">Usuario o Correo</label>
+          <input type="text" id="login-identifier" class="auth-input" required placeholder="tu_usuario o correo@ejemplo.com">
+        </div>
+        <div class="auth-form-group">
+          <label class="auth-label" data-i18n="auth_label_password">Contraseña</label>
+          <input type="password" id="login-password" class="auth-input" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;" data-i18n="auth_btn_submit_login">Entrar</button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="form-register" style="display:none;" onsubmit="submitRegister(event)">
+        <div class="auth-form-group">
+          <label class="auth-label" data-i18n="auth_label_reg_username">Nombre de Usuario</label>
+          <input type="text" id="reg-username" class="auth-input" required placeholder="ej. usuario123" minlength="3">
+        </div>
+        <div class="auth-form-group">
+          <label class="auth-label" data-i18n="auth_label_reg_email">Correo Electrónico</label>
+          <input type="email" id="reg-email" class="auth-input" required placeholder="tu@email.com">
+        </div>
+        <div class="auth-form-group">
+          <label class="auth-label" data-i18n="auth_label_password">Contraseña</label>
+          <input type="password" id="reg-password" class="auth-input" required placeholder="Mínimo 6 caracteres" minlength="6">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;" data-i18n="auth_btn_submit_register">Crear Cuenta Gratis</button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Google Account Picker Dialog -->
+  <div class="modal-overlay" id="google-picker-modal" onclick="closeGooglePicker()">
+    <div class="google-dialog-card" onclick="event.stopPropagation()">
+      <div class="google-dialog-header">
+        <svg class="google-icon" viewBox="0 0 24 24" width="28" height="28">
+          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"/>
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.34 24 12 24z"/>
+          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.42l4.04-3.15z"/>
+          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+        </svg>
+        <button class="modal-close-btn" onclick="closeGooglePicker()">✕</button>
+      </div>
+
+      <div class="google-dialog-body">
+        <h3 class="google-dialog-title" data-i18n="google_dialog_title">Elige una cuenta</h3>
+        <p class="google-dialog-sub" data-i18n="google_dialog_sub">para continuar en LettingWork (lettingwork.onrender.com)</p>
+
+        <div class="google-accounts-list">
+          <button type="button" class="google-account-item" onclick="selectGoogleAccount('ivandoski@gmail.com', 'Ivandoski')">
+            <div class="google-avatar">I</div>
+            <div class="google-account-info">
+              <span class="google-account-name">Ivandoski</span>
+              <span class="google-account-email">ivandoski@gmail.com</span>
+            </div>
+            <span class="google-check-icon">&rsaquo;</span>
+          </button>
+        </div>
+
+        <div class="google-custom-login">
+          <div class="auth-divider" style="margin: 0.85rem 0 1rem;">
+            <span data-i18n="google_custom_or">o usa otra cuenta de Google</span>
+          </div>
+          <form onsubmit="submitCustomGoogleLogin(event)" class="google-custom-form">
+            <input type="email" id="google-custom-email" class="auth-input" placeholder="tu_cuenta@gmail.com" required style="background:#fff; color:#1f2937; border: 1px solid #d1d5db;">
+            <button type="submit" class="btn btn-primary" style="margin-top:0.6rem; width:100%; background:#1a73e8; border-color:#1a73e8;" data-i18n="google_btn_continue">Continuar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Modal -->
+  <div class="modal-overlay" id="qr-modal" onclick="closeQRModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="closeQRModal()">✕</button>
+      <h3 data-i18n="qr_title">Escanea con tu teléfono</h3>
+      <p style="color:var(--text-muted); font-size: 0.9rem; margin-top:0.25rem;" data-i18n="qr_desc">Descarga el archivo directamente en tu móvil</p>
+      <div id="qrcode-container"></div>
+      <button class="btn btn-secondary" style="width:100%;" onclick="closeQRModal()" data-i18n="btn_close">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>LettingWork &bull; <span data-i18n="footer_tagline">Almacenamiento y transferencia de archivos rápida y segura.</span></p>
+    <div class="footer-version-tag">
+      <span data-i18n="drawer_version_text">Versión 0.1.0</span>
+      <span class="badge-beta-pill" data-i18n="drawer_badge_beta">BETA</span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
+=== templates/download.html ===
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Descargar Archivo - LettingWork Cloud</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Beta Banner -->
+  <div class="beta-banner">
+    <span data-i18n="beta_notice">🚀 LettingWork está actualmente en fase <strong>BETA</strong> (v0.1.0). ¿Encontraste algún error o bug?</span>
+    <a href="https://github.com/ivandoski/lettingwork/issues" target="_blank" data-i18n="beta_report">Repórtalo en GitHub &rarr;</a>
+  </div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <a href="/" class="brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+        </svg>
+      </div>
+      <div>Letting<span class="accent">Work</span><span class="brand-tag">Cloud</span></div>
+    </a>
+    
+    <div class="nav-actions">
+      <!-- Language Dropdown -->
+      <div class="lang-dropdown-wrapper">
+        <button id="lang-menu-btn" class="lang-btn" onclick="toggleLangMenu()" aria-label="Cambiar idioma">
+          <span id="current-lang-flag">🇪🇸</span>
+          <span id="current-lang-text">Español</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div id="lang-dropdown" class="lang-dropdown-menu">
+          <button class="lang-option" onclick="selectLanguage('es')"><span>🇪🇸</span> Español</button>
+          <button class="lang-option" onclick="selectLanguage('en')"><span>🇬🇧</span> English</button>
+          <button class="lang-option" onclick="selectLanguage('it')"><span>🇮🇹</span> Italiano</button>
+          <button class="lang-option" onclick="selectLanguage('de')"><span>🇩🇪</span> Deutsch</button>
+          <button class="lang-option" onclick="selectLanguage('fr')"><span>🇫🇷</span> Français</button>
+          <button class="lang-option" onclick="selectLanguage('pt')"><span>🇵🇹</span> Português</button>
+          <button class="lang-option" onclick="selectLanguage('nl-be')"><span>🇧🇪</span> Nederlands (België)</button>
+        </div>
+      </div>
+
+      <a href="/" class="btn btn-primary btn-sm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span data-i18n="btn_upload_file">Subir Archivo</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Container -->
+  <main class="container">
+    <div class="download-wrapper">
+
+      <!-- Loading State -->
+      <div id="download-loading" class="download-card">
+        <div class="download-icon" style="animation: pulse 1.5s infinite ease-in-out;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          </svg>
+        </div>
+        <h2 data-i18n="loading_file">Cargando archivo...</h2>
+        <p style="color:var(--text-muted); margin-top:0.5rem;" data-i18n="loading_file_desc">Conectando con la red de distribución</p>
+      </div>
+
+      <!-- Main Download Card -->
+      <div id="download-content" class="download-card" style="display:none;">
+        <div class="download-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="download-file-name" id="dl-file-name">archivo.zip</div>
+
+        <div class="download-file-info">
+          <span id="dl-file-size">0 MB</span>
+          <span>&bull;</span>
+          <span id="dl-upload-date">Hoy</span>
+          <span>&bull;</span>
+          <span id="dl-count">0 descargas</span>
+        </div>
+
+        <!-- Big Download Button -->
+        <a id="dl-btn-action" href="#" class="btn btn-primary download-btn-huge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span id="dl-btn-action-text" data-i18n="btn_download_file">Descargar Archivo</span>
+        </a>
+
+        <!-- Secondary Actions -->
+        <div style="display:flex; justify-content:center; gap:0.75rem; margin-top:1rem;">
+          <button id="dl-btn-copy" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span data-i18n="btn_share_link">Compartir Enlace</span>
+          </button>
+          <button id="dl-btn-qr" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span data-i18n="btn_qr_code">Código QR</span>
+          </button>
+        </div>
+
+        <div class="download-meta-badges">
+          <div class="badge-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="var(--accent-green)">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span data-i18n="badge_secure">Descarga Directa & Segura</span>
+          </div>
+          <div class="badge-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="var(--accent-blue)">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span data-i18n="badge_no_wait">Sin tiempos de espera</span>
+          </div>
+          <div class="badge-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="var(--accent-cyan)">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span data-i18n="badge_clean">Sin Malware Verificado</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Error State -->
+      <div id="download-error" class="download-card" style="display:none;">
+        <div class="download-icon" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: var(--accent-red);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
+        <h2 data-i18n="error_not_available">Archivo no disponible</h2>
+        <p style="color:var(--text-muted); margin: 0.75rem 0 1.5rem 0;" data-i18n="error_not_available_desc">
+          El archivo que buscas no existe, ha expirado o fue eliminado por su propietario.
+        </p>
+        <a href="/" class="btn btn-primary" data-i18n="btn_back_home">
+          Ir a LettingWork
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- QR Modal -->
+  <div class="modal-overlay" id="qr-modal" onclick="closeQRModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="closeQRModal()">✕</button>
+      <h3 data-i18n="qr_title">Escanea con tu teléfono</h3>
+      <p style="color:var(--text-muted); font-size: 0.9rem; margin-top:0.25rem;" data-i18n="qr_desc">Descarga el archivo directamente en tu móvil</p>
+      <div id="qrcode-container"></div>
+      <button class="btn btn-secondary" style="width:100%;" onclick="closeQRModal()" data-i18n="btn_close">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>LettingWork &bull; <span data-i18n="footer_tagline">Almacenamiento y transferencia de archivos rápida y segura.</span></p>
+    <div class="footer-version-tag">
+      <span data-i18n="drawer_version_text">Versión 0.1.0</span>
+      <span class="badge-beta-pill" data-i18n="drawer_badge_beta">BETA</span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+

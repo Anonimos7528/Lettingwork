@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" width="1440" height="810" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="pdf-orb-center" gradientUnits="userSpaceOnUse" cx="720" cy="405" r="274.752">
+      <stop offset="0%" stop-color="#22d9ee" stop-opacity="0.71" />
+      <stop offset="50%" stop-color="#22d9ee" stop-opacity="0.355" />
+      <stop offset="100%" stop-color="#22d9ee" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="pdf-orb-bottom-left" gradientUnits="userSpaceOnUse" cx="-14.73" cy="753.01" r="260.027">
+      <stop offset="0%" stop-color="#22d9ee" stop-opacity="0.71" />
+      <stop offset="50%" stop-color="#22d9ee" stop-opacity="0.355" />
+      <stop offset="100%" stop-color="#22d9ee" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="pdf-orb-top-right" gradientUnits="userSpaceOnUse" cx="1440" cy="-21.07" r="260.027">
+      <stop offset="0%" stop-color="#22d9ee" stop-opacity="0.71" />
+      <stop offset="50%" stop-color="#22d9ee" stop-opacity="0.355" />
+      <stop offset="100%" stop-color="#22d9ee" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="1440" height="810" fill="#000000" />
+  <circle cx="720" cy="405" r="274.752" fill="url(#pdf-orb-center)" />
+  <circle cx="-14.73" cy="753.01" r="260.027" fill="url(#pdf-orb-bottom-left)" />
+  <circle cx="1440" cy="-21.07" r="260.027" fill="url(#pdf-orb-top-right)" />
+</svg>

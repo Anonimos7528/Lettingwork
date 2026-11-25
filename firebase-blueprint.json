@@ -1,0 +1,133 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account profile stored in Firestore with persistent 10GB storage tier metadata",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "username": {
+          "type": "string",
+          "description": "Display name or username",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "maxLength": 160
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["google", "password"],
+          "description": "Authentication provider"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional profile avatar URL",
+          "maxLength": 512
+        },
+        "storageTier": {
+          "type": "string",
+          "enum": ["free_10gb"],
+          "description": "Persistent storage tier unlocked by registered accounts (10 GB)"
+        },
+        "storageLimitBytes": {
+          "type": "number",
+          "description": "Maximum storage quota in bytes for registered users (10737418240 bytes = 10 GB)"
+        },
+        "storageUsedBytes": {
+          "type": "number",
+          "description": "Total persistent storage used in bytes across user files"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Account creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "username",
+        "email",
+        "provider",
+        "storageTier",
+        "storageLimitBytes",
+        "storageUsedBytes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserFileRecord": {
+      "title": "UserFileRecord",
+      "description": "Metadata for an uploaded file owned by a signed-in user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique file ID",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "originalName": {
+          "type": "string",
+          "description": "Original filename",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "sizeBytes": {
+          "type": "number",
+          "description": "File size in bytes"
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "MIME type",
+          "maxLength": 128
+        },
+        "shareUrl": {
+          "type": "string",
+          "description": "Relative share path",
+          "maxLength": 256
+        },
+        "deleteToken": {
+          "type": "string",
+          "description": "Owner deletion token",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Upload timestamp"
+        }
+      },
+      "required": ["id", "userId", "originalName", "sizeBytes", "mimeType", "shareUrl", "deleteToken", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-only user profile document with persistent 10GB storage tier and usage"
+    },
+    "/users/{userId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/UserFileRecord" },
+      "description": "Owner-only uploaded file history and deletion tokens"
+    }
+  }
+}

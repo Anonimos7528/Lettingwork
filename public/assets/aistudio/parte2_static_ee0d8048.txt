@@ -1,0 +1,3070 @@
+=== static/app.js ===
+// LettingWork - High Performance Cloud File Sharing
+// Full Internationalization (7 Languages: ES, EN, IT, DE, FR, PT, NL-BE)
+
+const I18N = {
+  es: {
+    lang_name: "Español",
+    lang_flag: "🇪🇸",
+    beta_notice: "🚀 LettingWork está actualmente en fase <strong>BETA</strong> (v0.1.0). ¿Encontraste algún error o bug?",
+    beta_report: "Repórtalo en GitHub &rarr;",
+    nav_upload: "Subir Archivo",
+    nav_about: "Sobre Nosotros",
+    nav_files: "Mis Archivos",
+    nav_menu: "Menú",
+    drawer_guest_greeting: "Modo Invitado",
+    drawer_guest_desc: "Inicia sesión para gestionar tus archivos desde cualquier lugar",
+    drawer_btn_login: "Iniciar Sesión",
+    drawer_btn_register: "Crear Cuenta",
+    drawer_btn_logout: "Cerrar Sesión",
+    drawer_btn_upload: "Subir Archivos",
+    drawer_storage_title: "Almacenamiento Cloud",
+    drawer_storage_plan: "Plan Gratuito",
+    drawer_storage_unmetered: "Ilimitado",
+    drawer_nav_my_files: "Mis Archivos",
+    drawer_nav_about: "Sobre Nosotros",
+    drawer_nav_security: "Seguridad y Cifrado",
+    drawer_nav_status: "Servidores Operativos",
+    drawer_version_text: "Versión 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Presentación Oficial • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Por Ivandoski",
+    hero_desc: "Plataforma de transferencia y almacenamiento en la nube de alta velocidad. Sube archivos a través del menú lateral con enlaces directos instantáneos y control total.",
+    hero_cta_menu: "Abrir Menú para Subir",
+    hero_cta_upload: "Subir un Archivo",
+    hero_stat_speed: "Velocidad Gigabit Directa",
+    hero_stat_privacy: "Token de Borrado Único",
+    hero_stat_nowait: "0s Esperas ni Captchas",
+    about_badge: "Misión y Filosofía",
+    about_title: "About Us",
+    about_subtitle: "Diseñado para eliminar la fricción en la transferencia de archivos en Internet.",
+    about_concept_title: "Concepto",
+    about_concept_desc: "LettingWork es una moderna y ligera plataforma web de almacenamiento y compartición de archivos inspirada en servicios como Mediafire y Mega.",
+    about_purpose_title: "Propósito Central",
+    about_purpose_desc: "Resuelve la fricción de las herramientas tradicionales eliminando registros obligatorios, publicidad agresiva y molestas cuentas regresivas de descarga.",
+    about_philosophy_title: "Filosofía",
+    about_philosophy_desc: "Limpio, directo y accesible para todos, tanto en navegadores de escritorio como en dispositivos móviles Android.",
+    about_preview_title: "Presentación Oficial LettingWork",
+    about_preview_desc: "Diseño limpio y funcional sin tiempos de espera, creado por Ivandoski para ofrecer enlaces directos con total fiabilidad.",
+    metric_uptime: "Disponibilidad Uptime",
+    metric_queues: "Colas de Espera",
+    metric_limit: "Capacidad por Archivo",
+    metric_direct: "Enlaces Directos",
+    recent_title: "Tus Subidas Recientes",
+    recent_subtitle: "Gestiona, descarga o elimina tus enlaces activos",
+    recent_empty: "No tienes archivos subidos recientemente desde este navegador. ¡Usa el menú para subir uno!",
+    upload_modal_title: "Subir Archivos a la Nube",
+    upload_modal_subtitle: "Arrastra o selecciona un archivo para generar un enlace directo instantáneo",
+    dropzone_title: "Arrastra y suelta tu archivo aquí",
+    dropzone_subtitle: "o haz clic para explorar en tu ordenador o móvil",
+    dropzone_hint: "Soporta archivos de hasta 10 GB sin compresión forzada",
+    btn_cancel: "Cancelar",
+    success_ready: "¡Tu archivo ya está listo para compartir!",
+    success_copy_desc: "Copia este enlace directo para enviárselo a quien quieras:",
+    btn_copy_link: "Copiar Enlace",
+    btn_open_page: "Abrir Página de Descarga",
+    btn_direct_download: "Descarga Directa",
+    btn_qr_code: "Código QR",
+    btn_upload_another: "Subir Otro Archivo",
+    btn_upload_file: "Subir Archivo",
+    auth_tab_login: "Iniciar Sesión",
+    auth_tab_register: "Crear Cuenta",
+    auth_btn_google: "Continuar con Google",
+    auth_divider_or: "o usa tu cuenta",
+    auth_label_username: "Usuario o Correo",
+    auth_label_reg_username: "Nombre de Usuario",
+    auth_label_reg_email: "Correo Electrónico",
+    auth_label_password: "Contraseña",
+    auth_btn_submit_login: "Entrar",
+    auth_btn_submit_register: "Crear Cuenta Gratis",
+    google_dialog_title: "Elige una cuenta",
+    google_dialog_sub: "para continuar en LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "o usa otra cuenta de Google",
+    google_btn_continue: "Continuar",
+    toast_google_success: "¡Sesión iniciada con Google!",
+    qr_title: "Escanea con tu teléfono",
+    qr_desc: "Descarga el archivo directamente en tu móvil",
+    btn_close: "Cerrar",
+    footer_tagline: "Almacenamiento y transferencia de archivos rápida y segura.",
+    loading_file: "Cargando archivo...",
+    loading_file_desc: "Conectando con la red de distribución",
+    btn_download_file: "Descargar Archivo",
+    btn_share_link: "Compartir Enlace",
+    badge_secure: "Descarga Directa & Segura",
+    badge_no_wait: "Sin tiempos de espera",
+    badge_clean: "Sin Malware Verificado",
+    error_not_available: "Archivo no disponible",
+    error_not_available_desc: "El archivo que buscas no existe, ha expirado o fue eliminado por su propietario.",
+    btn_back_home: "Ir a LettingWork",
+    toast_copied: "¡Enlace copiado al portapapeles!",
+    toast_uploaded: "¡Archivo subido exitosamente!",
+    toast_deleted: "Archivo eliminado con éxito",
+    toast_login_success: "¡Sesión iniciada correctamente!",
+    toast_register_success: "¡Cuenta creada exitosamente!",
+    toast_logout: "Sesión cerrada correctamente",
+    confirm_delete: "¿Seguro que deseas eliminar permanentemente este archivo?",
+    downloads_suffix: "descargas",
+    today: "Hoy"
+  },
+  en: {
+    lang_name: "English",
+    lang_flag: "🇬🇧",
+    beta_notice: "🚀 LettingWork is currently in <strong>BETA</strong> (v0.1.0). Found any bugs or issues?",
+    beta_report: "Report it on GitHub &rarr;",
+    nav_upload: "Upload File",
+    nav_about: "About Us",
+    nav_files: "My Files",
+    nav_menu: "Menu",
+    drawer_guest_greeting: "Guest Mode",
+    drawer_guest_desc: "Sign in to manage and keep track of your files anywhere",
+    drawer_btn_login: "Sign In",
+    drawer_btn_register: "Sign Up",
+    drawer_btn_logout: "Log Out",
+    drawer_btn_upload: "Upload Files",
+    drawer_storage_title: "Cloud Storage",
+    drawer_storage_plan: "Free Plan",
+    drawer_storage_unmetered: "Unmetered",
+    drawer_nav_my_files: "My Files",
+    drawer_nav_about: "About Us",
+    drawer_nav_security: "Security & Encryption",
+    drawer_nav_status: "Systems Operational",
+    drawer_version_text: "Version 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Official Presentation • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "By Ivandoski",
+    hero_desc: "High-speed cloud file storage and distribution platform. Upload files through the side menu with instant direct links and full control.",
+    hero_cta_menu: "Open Menu to Upload",
+    hero_cta_upload: "Upload a File",
+    hero_stat_speed: "Direct Gigabit Speed",
+    hero_stat_privacy: "Unique Deletion Token",
+    hero_stat_nowait: "0s Queues or Captchas",
+    about_badge: "Mission & Philosophy",
+    about_title: "About Us",
+    about_subtitle: "Designed to remove friction from file sharing across the web.",
+    about_concept_title: "Concept",
+    about_concept_desc: "LettingWork is a modern, lightweight cloud storage and file-sharing web platform inspired by services like Mediafire and Mega.",
+    about_purpose_title: "Core Purpose",
+    about_purpose_desc: "Solves the friction of conventional file-sharing tools by eliminating mandatory registrations, aggressive advertising, and artificial download countdowns.",
+    about_philosophy_title: "Philosophy",
+    about_philosophy_desc: "Clean, direct, and accessible for everyone across both desktop browsers and Android mobile devices.",
+    about_preview_title: "Official LettingWork Presentation",
+    about_preview_desc: "A clean and fast interface without waiting countdowns, created by Ivandoski to deliver direct links with total reliability.",
+    metric_uptime: "Uptime Availability",
+    metric_queues: "Waiting Queues",
+    metric_limit: "Per-File Capacity",
+    metric_direct: "Direct Links",
+    recent_title: "Your Recent Uploads",
+    recent_subtitle: "Manage, download, or permanently remove your active links",
+    recent_empty: "No recent uploads from this browser session yet. Use the menu to upload one!",
+    upload_modal_title: "Upload Files to Cloud",
+    upload_modal_subtitle: "Drag or select a file to generate an instant direct shareable link",
+    dropzone_title: "Drag and drop your file here",
+    dropzone_subtitle: "or click to browse from your computer or phone",
+    dropzone_hint: "Supports files up to 10 GB without forced compression",
+    btn_cancel: "Cancel",
+    success_ready: "Your file is ready to share!",
+    success_copy_desc: "Copy this direct link to share with anyone:",
+    btn_copy_link: "Copy Link",
+    btn_open_page: "Open Download Page",
+    btn_direct_download: "Direct Download",
+    btn_qr_code: "QR Code",
+    btn_upload_another: "Upload Another File",
+    btn_upload_file: "Upload File",
+    auth_tab_login: "Sign In",
+    auth_tab_register: "Create Account",
+    auth_btn_google: "Continue with Google",
+    auth_divider_or: "or use your account",
+    auth_label_username: "Username or Email",
+    auth_label_reg_username: "Username",
+    auth_label_reg_email: "Email Address",
+    auth_label_password: "Password",
+    auth_btn_submit_login: "Sign In",
+    auth_btn_submit_register: "Create Free Account",
+    google_dialog_title: "Choose an account",
+    google_dialog_sub: "to continue to LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "or use another Google account",
+    google_btn_continue: "Continue",
+    toast_google_success: "Signed in with Google successfully!",
+    qr_title: "Scan with your phone",
+    qr_desc: "Download the file directly onto your mobile device",
+    btn_close: "Close",
+    footer_tagline: "Fast, secure, high-speed cloud file distribution.",
+    loading_file: "Loading file...",
+    loading_file_desc: "Connecting to edge distribution network",
+    btn_download_file: "Download File",
+    btn_share_link: "Share Link",
+    badge_secure: "Direct & Secure Download",
+    badge_no_wait: "Zero waiting times",
+    badge_clean: "Verified Malware-Free",
+    error_not_available: "File unavailable",
+    error_not_available_desc: "The file you are looking for does not exist, has expired, or was removed.",
+    btn_back_home: "Go to LettingWork",
+    toast_copied: "Link copied to clipboard!",
+    toast_uploaded: "File uploaded successfully!",
+    toast_deleted: "File deleted successfully",
+    toast_login_success: "Signed in successfully!",
+    toast_register_success: "Account created successfully!",
+    toast_logout: "Logged out successfully",
+    confirm_delete: "Are you sure you want to permanently delete this file?",
+    downloads_suffix: "downloads",
+    today: "Today"
+  },
+  it: {
+    lang_name: "Italiano",
+    lang_flag: "🇮🇹",
+    beta_notice: "🚀 LettingWork è attualmente in fase <strong>BETA</strong> (v0.1.0). Hai riscontrato un bug o problema?",
+    beta_report: "Segnalalo su GitHub &rarr;",
+    nav_upload: "Carica File",
+    nav_about: "Chi Siamo",
+    nav_files: "I Miei File",
+    nav_menu: "Menu",
+    drawer_guest_greeting: "Modalità Ospite",
+    drawer_guest_desc: "Accedi per gestire i tuoi file ovunque ti trovi",
+    drawer_btn_login: "Accedi",
+    drawer_btn_register: "Registrati",
+    drawer_btn_logout: "Disconnetti",
+    drawer_btn_upload: "Carica File",
+    drawer_storage_title: "Archiviazione Cloud",
+    drawer_storage_plan: "Piano Gratuito",
+    drawer_storage_unmetered: "Illimitato",
+    drawer_nav_my_files: "I Miei File",
+    drawer_nav_about: "Chi Siamo",
+    drawer_nav_security: "Sicurezza e Crittografia",
+    drawer_nav_status: "Sistemi Operativi",
+    drawer_version_text: "Versione 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Presentazione Ufficiale • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Di Ivandoski",
+    hero_desc: "Piattaforma di archiviazione e trasferimento cloud ad alta velocità. Carica file tramite il menu laterale con link diretti immediati e pieno controllo.",
+    hero_cta_menu: "Apri Menu per Caricare",
+    hero_cta_upload: "Carica un File",
+    hero_stat_speed: "Velocità Gigabit Diretta",
+    hero_stat_privacy: "Token di Eliminazione Unico",
+    hero_stat_nowait: "0s Attese né Captcha",
+    about_badge: "Missione e Filosofia",
+    about_title: "About Us",
+    about_subtitle: "Progettato per rimuovere ogni ostacolo nella condivisione di file su Internet.",
+    about_concept_title: "Concetto",
+    about_concept_desc: "LettingWork è una moderna e leggera piattaforma web di archiviazione e condivisione file ispirata a servizi come Mediafire e Mega.",
+    about_purpose_title: "Scopo Principale",
+    about_purpose_desc: "Risolve le complessità degli strumenti convenzionali eliminando registrazioni obbligatorie, pubblicità aggressiva e fastidiosi conti alla rovescia.",
+    about_philosophy_title: "Filosofia",
+    about_philosophy_desc: "Pulito, diretto e accessibile a tutti, sia su browser desktop che su dispositivi mobili Android.",
+    about_preview_title: "Presentazione Ufficiale LettingWork",
+    about_preview_desc: "Un'interfaccia pulita e rapida senza tempi di attesa, creata da Ivandoski per offrire link diretti in totale affidabilità.",
+    metric_uptime: "Disponibilità Uptime",
+    metric_queues: "Code di Attesa",
+    metric_limit: "Capacità per File",
+    metric_direct: "Link Diretti",
+    recent_title: "I Tuoi Caricamenti Recenti",
+    recent_subtitle: "Gestisci, scarica o elimina i tuoi link attivi",
+    recent_empty: "Nessun file recente caricato da questo browser. Usa il menu per caricarne uno!",
+    upload_modal_title: "Carica File sul Cloud",
+    upload_modal_subtitle: "Trascina o seleziona un file per generare un link diretto istantaneo",
+    dropzone_title: "Trascina e rilascia il tuo file qui",
+    dropzone_subtitle: "o clicca per esplorare sul computer o telefono",
+    dropzone_hint: "Supporta file fino a 10 GB senza compressione forzata",
+    btn_cancel: "Annulla",
+    success_ready: "Il tuo file è pronto per essere condiviso!",
+    success_copy_desc: "Copia questo link diretto per inviarlo a chi vuoi:",
+    btn_copy_link: "Copia Link",
+    btn_open_page: "Apri Pagina di Download",
+    btn_direct_download: "Download Diretto",
+    btn_qr_code: "Codice QR",
+    btn_upload_another: "Carica un Altro File",
+    btn_upload_file: "Carica File",
+    auth_tab_login: "Accedi",
+    auth_tab_register: "Crea Account",
+    auth_btn_google: "Continua con Google",
+    auth_divider_or: "o usa il tuo account",
+    auth_label_username: "Nome Utente o Email",
+    auth_label_reg_username: "Nome Utente",
+    auth_label_reg_email: "Indirizzo Email",
+    auth_label_password: "Password",
+    auth_btn_submit_login: "Accedi",
+    auth_btn_submit_register: "Crea Account Gratuito",
+    google_dialog_title: "Scegli un account",
+    google_dialog_sub: "per continuare su LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "o usa un altro account Google",
+    google_btn_continue: "Continua",
+    toast_google_success: "Accesso effettuato con Google!",
+    qr_title: "Scansiona con il tuo smartphone",
+    qr_desc: "Scarica il file direttamente sul tuo dispositivo mobile",
+    btn_close: "Chiudi",
+    footer_tagline: "Archiviazione e trasferimento file cloud rapido e sicuro.",
+    loading_file: "Caricamento file in corso...",
+    loading_file_desc: "Connessione alla rete di distribuzione",
+    btn_download_file: "Scarica File",
+    btn_share_link: "Condividi Link",
+    badge_secure: "Download Diretto & Sicuro",
+    badge_no_wait: "Nessun tempo di attesa",
+    badge_clean: "Verificato Senza Malware",
+    error_not_available: "File non disponibile",
+    error_not_available_desc: "Il file cercato non esiste, è scaduto o è stato rimosso.",
+    btn_back_home: "Vai a LettingWork",
+    toast_copied: "Link copiato negli appunti!",
+    toast_uploaded: "File caricato con successo!",
+    toast_deleted: "File eliminato con successo",
+    toast_login_success: "Accesso effettuato con successo!",
+    toast_register_success: "Account creato con successo!",
+    toast_logout: "Disconnessione completata",
+    confirm_delete: "Sei sicuro di voler eliminare definitivamente questo file?",
+    downloads_suffix: "download",
+    today: "Oggi"
+  },
+  de: {
+    lang_name: "Deutsch",
+    lang_flag: "🇩🇪",
+    beta_notice: "🚀 LettingWork befindet sich in der <strong>BETA</strong>-Phase (v0.1.0). Fehler gefunden?",
+    beta_report: "Auf GitHub melden &rarr;",
+    nav_upload: "Datei Hochladen",
+    nav_about: "Über Uns",
+    nav_files: "Meine Dateien",
+    nav_menu: "Menü",
+    drawer_guest_greeting: "Gastmodus",
+    drawer_guest_desc: "Melde dich an, um deine Dateien überall zu verwalten",
+    drawer_btn_login: "Anmelden",
+    drawer_btn_register: "Registrieren",
+    drawer_btn_logout: "Abmelden",
+    drawer_btn_upload: "Dateien Hochladen",
+    drawer_storage_title: "Cloud-Speicher",
+    drawer_storage_plan: "Kostenloser Plan",
+    drawer_storage_unmetered: "Unbegrenzt",
+    drawer_nav_my_files: "Meine Dateien",
+    drawer_nav_about: "Über Uns",
+    drawer_nav_security: "Sicherheit & Verschlüsselung",
+    drawer_nav_status: "Systeme Betriebsbereit",
+    drawer_version_text: "Version 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Offizielle Präsentation • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Von Ivandoski",
+    hero_desc: "High-Speed-Cloud-Speicher und Dateiverteilungsplattform. Lade Dateien über das Seitenmenü mit sofortigen Direktlinks und voller Kontrolle hoch.",
+    hero_cta_menu: "Menü zum Hochladen Öffnen",
+    hero_cta_upload: "Datei Hochladen",
+    hero_stat_speed: "Direkte Gigabit-Geschwindigkeit",
+    hero_stat_privacy: "Einmaliger Lösch-Token",
+    hero_stat_nowait: "0s Wartezeiten oder Captchas",
+    about_badge: "Mission & Philosophie",
+    about_title: "About Us",
+    about_subtitle: "Entwickelt, um Hürden beim Dateiaustausch im Internet komplett zu beseitigen.",
+    about_concept_title: "Konzept",
+    about_concept_desc: "LettingWork ist eine moderne, leichtgewichtige Cloud-Speicher- und Dateifreigabe-Plattform, inspiriert von Diensten wie Mediafire und Mega.",
+    about_purpose_title: "Hauptzweck",
+    about_purpose_desc: "Beseitigt die Reibung herkömmlicher Tools durch den Verzicht auf Pflichtregistrierungen, aggressive Werbung und künstliche Download-Countdowns.",
+    about_philosophy_title: "Philosophie",
+    about_philosophy_desc: "Sauber, direkt und für jeden zugänglich – sowohl auf Desktop-Browsern als auch auf Android-Mobilgeräten.",
+    about_preview_title: "Offizielle LettingWork Präsentation",
+    about_preview_desc: "Sauberes Design ohne Wartezeiten, entwickelt von Ivandoski für maximale Zuverlässigkeit und direkte Links.",
+    metric_uptime: "Uptime Verfügbarkeit",
+    metric_queues: "Warteschlangen",
+    metric_limit: "Kapazität pro Datei",
+    metric_direct: "Direktlinks",
+    recent_title: "Deine Kürzlichen Uploads",
+    recent_subtitle: "Verwalte, lade herunter oder lösche deine aktiven Links",
+    recent_empty: "Bisher keine Uploads in diesem Browser. Nutze das Menü zum Hochladen!",
+    upload_modal_title: "Dateien in die Cloud Hochladen",
+    upload_modal_subtitle: "Datei ablegen oder auswählen, um einen sofortigen Direktlink zu erstellen",
+    dropzone_title: "Ziehe deine Datei hierher",
+    dropzone_subtitle: "oder klicke, um auf deinem Computer oder Smartphone zu suchen",
+    dropzone_hint: "Unterstützt Dateien bis zu 10 GB ohne erzwungene Komprimierung",
+    btn_cancel: "Abbrechen",
+    success_ready: "Deine Datei ist bereit zum Teilen!",
+    success_copy_desc: "Kopiere diesen Direktlink zum Versenden an beliebige Empfänger:",
+    btn_copy_link: "Link Kopieren",
+    btn_open_page: "Download-Seite Öffnen",
+    btn_direct_download: "Direkter Download",
+    btn_qr_code: "QR-Code",
+    btn_upload_another: "Weitere Datei Hochladen",
+    btn_upload_file: "Datei Hochladen",
+    auth_tab_login: "Anmelden",
+    auth_tab_register: "Konto Erstellen",
+    auth_btn_google: "Mit Google fortfahren",
+    auth_divider_or: "oder mit deinem Konto",
+    auth_label_username: "Benutzername oder E-Mail",
+    auth_label_reg_username: "Benutzername",
+    auth_label_reg_email: "E-Mail-Adresse",
+    auth_label_password: "Passwort",
+    auth_btn_submit_login: "Anmelden",
+    auth_btn_submit_register: "Kostenloses Konto Erstellen",
+    google_dialog_title: "Konto auswählen",
+    google_dialog_sub: "um zu LettingWork fortzufahren (lettingwork.onrender.com)",
+    google_custom_or: "oder anderes Google-Konto nutzen",
+    google_btn_continue: "Fortfahren",
+    toast_google_success: "Erfolgreich mit Google angemeldet!",
+    qr_title: "Mit dem Smartphone scannen",
+    qr_desc: "Lade die Datei direkt auf dein mobiles Gerät herunter",
+    btn_close: "Schließen",
+    footer_tagline: "Schnelle und sichere Cloud-Dateifreigabe und Speicher.",
+    loading_file: "Datei wird geladen...",
+    loading_file_desc: "Verbindung zum Verteilungsnetzwerk wird hergestellt",
+    btn_download_file: "Datei Herunterladen",
+    btn_share_link: "Link Teilen",
+    badge_secure: "Direkter & Sicherer Download",
+    badge_no_wait: "Keine Wartezeiten",
+    badge_clean: "Geprüft Virenfrei",
+    error_not_available: "Datei nicht verfügbar",
+    error_not_available_desc: "Die gesuchte Datei existiert nicht mehr, ist abgelaufen oder wurde gelöscht.",
+    btn_back_home: "Zur Startseite",
+    toast_copied: "Link in die Zwischenablage kopiert!",
+    toast_uploaded: "Datei erfolgreich hochgeladen!",
+    toast_deleted: "Datei erfolgreich gelöscht",
+    toast_login_success: "Erfolgreich angemeldet!",
+    toast_register_success: "Konto erfolgreich erstellt!",
+    toast_logout: "Erfolgreich abgemeldet",
+    confirm_delete: "Möchtest du diese Datei wirklich dauerhaft löschen?",
+    downloads_suffix: "Downloads",
+    today: "Heute"
+  },
+  fr: {
+    lang_name: "Français",
+    lang_flag: "🇫🇷",
+    beta_notice: "🚀 LettingWork est actuellement en <strong>BETA</strong> (v0.1.0). Un bug ou problème ?",
+    beta_report: "Signalez-le sur GitHub &rarr;",
+    nav_upload: "Téléverser",
+    nav_about: "À Propos",
+    nav_files: "Mes Fichiers",
+    nav_menu: "Menu",
+    drawer_guest_greeting: "Mode Invité",
+    drawer_guest_desc: "Connectez-vous pour gérer vos fichiers où que vous soyez",
+    drawer_btn_login: "Connexion",
+    drawer_btn_register: "S'inscrire",
+    drawer_btn_logout: "Déconnexion",
+    drawer_btn_upload: "Téléverser des Fichiers",
+    drawer_storage_title: "Stockage Cloud",
+    drawer_storage_plan: "Forfait Gratuit",
+    drawer_storage_unmetered: "Illimité",
+    drawer_nav_my_files: "Mes Fichiers",
+    drawer_nav_about: "À Propos",
+    drawer_nav_security: "Sécurité & Chiffrement",
+    drawer_nav_status: "Systèmes Opérationnels",
+    drawer_version_text: "Version 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Présentation Officielle • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Par Ivandoski",
+    hero_desc: "Plateforme de transfert et de stockage de fichiers cloud haute vitesse. Téléversez via le menu latéral avec des liens directs instantanés et un contrôle absolu.",
+    hero_cta_menu: "Ouvrir le Menu pour Téléverser",
+    hero_cta_upload: "Téléverser un Fichier",
+    hero_stat_speed: "Vitesse Gigabit Directe",
+    hero_stat_privacy: "Jeton de Suppression Unique",
+    hero_stat_nowait: "0s d'Attente ni Captchas",
+    about_badge: "Mission & Philosophie",
+    about_title: "About Us",
+    about_subtitle: "Conçu pour éliminer toute friction lors du partage de fichiers sur le web.",
+    about_concept_title: "Concept",
+    about_concept_desc: "LettingWork est une plateforme web moderne et légère de stockage et de partage de fichiers inspirée de services comme Mediafire et Mega.",
+    about_purpose_title: "Objectif Principal",
+    about_purpose_desc: "Résout les frictions des outils conventionnels en éliminant les inscriptions obligatoires, les publicités agressives et les décomptes d'attente.",
+    about_philosophy_title: "Philosophie",
+    about_philosophy_desc: "Propre, direct et accessible à tous, aussi bien sur navigateurs d'ordinateur que sur téléphones Android.",
+    about_preview_title: "Présentation Officielle LettingWork",
+    about_preview_desc: "Une interface claire sans temps d'attente, créée par Ivandoski pour garantir des liens directs fiables et immédiats.",
+    metric_uptime: "Disponibilité Uptime",
+    metric_queues: "Files d'Attente",
+    metric_limit: "Capacité par Fichier",
+    metric_direct: "Liens Directs",
+    recent_title: "Vos Téléversements Récents",
+    recent_subtitle: "Gérez, téléchargez ou supprimez vos liens actifs",
+    recent_empty: "Aucun fichier récent téléversé depuis ce navigateur. Utilisez le menu pour en ajouter un !",
+    upload_modal_title: "Téléverser des Fichiers sur le Cloud",
+    upload_modal_subtitle: "Glissez ou parcourez un fichier pour générer un lien direct instantané",
+    dropzone_title: "Glissez et déposez votre fichier ici",
+    dropzone_subtitle: "ou cliquez pour parcourir vos documents ou photos",
+    dropzone_hint: "Prend en charge les fichiers jusqu'à 10 Go sans compression forcée",
+    btn_cancel: "Annuler",
+    success_ready: "Votre fichier est prêt à être partagé !",
+    success_copy_desc: "Copiez ce lien direct pour l'envoyer à qui vous voulez :",
+    btn_copy_link: "Copier le Lien",
+    btn_open_page: "Ouvrir la Page de Téléchargement",
+    btn_direct_download: "Téléchargement Direct",
+    btn_qr_code: "Code QR",
+    btn_upload_another: "Téléverser un Autre Fichier",
+    btn_upload_file: "Téléverser",
+    auth_tab_login: "Connexion",
+    auth_tab_register: "Créer un Compte",
+    auth_btn_google: "Continuer avec Google",
+    auth_divider_or: "ou avec votre compte",
+    auth_label_username: "Nom d'utilisateur ou Email",
+    auth_label_reg_username: "Nom d'utilisateur",
+    auth_label_reg_email: "Adresse Email",
+    auth_label_password: "Mot de passe",
+    auth_btn_submit_login: "Se connecter",
+    auth_btn_submit_register: "Créer un Compte Gratuit",
+    google_dialog_title: "Choisir un compte",
+    google_dialog_sub: "pour continuer vers LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "ou utiliser un autre compte Google",
+    google_btn_continue: "Continuer",
+    toast_google_success: "Connecté avec Google !",
+    qr_title: "Scannez avec votre mobile",
+    qr_desc: "Téléchargez le fichier directement sur votre smartphone",
+    btn_close: "Fermer",
+    footer_tagline: "Partage et stockage de fichiers cloud rapide et sécurisé.",
+    loading_file: "Chargement du fichier...",
+    loading_file_desc: "Connexion au réseau de distribution",
+    btn_download_file: "Télécharger le Fichier",
+    btn_share_link: "Partager le Lien",
+    badge_secure: "Téléchargement Direct & Sécurisé",
+    badge_no_wait: "Aucun temps d'attente",
+    badge_clean: "Vérifié Sans Malware",
+    error_not_available: "Fichier indisponible",
+    error_not_available_desc: "Le fichier demandé n'existe pas, a expiré ou a été supprimé.",
+    btn_back_home: "Aller à LettingWork",
+    toast_copied: "Lien copié dans le presse-papiers !",
+    toast_uploaded: "Fichier téléversé avec succès !",
+    toast_deleted: "Fichier supprimé avec succès",
+    toast_login_success: "Connexion réussie !",
+    toast_register_success: "Compte créé avec succès !",
+    toast_logout: "Déconnexion réussie",
+    confirm_delete: "Êtes-vous sûr de vouloir supprimer définitivement ce fichier ?",
+    downloads_suffix: "téléchargements",
+    today: "Aujourd'hui"
+  },
+  pt: {
+    lang_name: "Português",
+    lang_flag: "🇵🇹",
+    beta_notice: "🚀 O LettingWork está em fase <strong>BETA</strong> (v0.1.0). Encontrou algum bug?",
+    beta_report: "Reporte no GitHub &rarr;",
+    nav_upload: "Enviar Arquivo",
+    nav_about: "Sobre Nós",
+    nav_files: "Meus Arquivos",
+    nav_menu: "Menu",
+    drawer_guest_greeting: "Modo Convidado",
+    drawer_guest_desc: "Inicie sessão para gerenciar seus arquivos de qualquer lugar",
+    drawer_btn_login: "Iniciar Sessão",
+    drawer_btn_register: "Criar Conta",
+    drawer_btn_logout: "Terminar Sessão",
+    drawer_btn_upload: "Enviar Arquivos",
+    drawer_storage_title: "Armazenamento Cloud",
+    drawer_storage_plan: "Plano Gratuito",
+    drawer_storage_unmetered: "Ilimitado",
+    drawer_nav_my_files: "Meus Arquivos",
+    drawer_nav_about: "Sobre Nós",
+    drawer_nav_security: "Segurança e Criptografia",
+    drawer_nav_status: "Sistemas Operacionais",
+    drawer_version_text: "Versão 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Apresentação Oficial • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Por Ivandoski",
+    hero_desc: "Plataforma de alta velocidade para armazenamento e distribuição de arquivos em nuvem. Envie arquivos através do menu lateral com links diretos imediatos e controle total.",
+    hero_cta_menu: "Abrir Menu para Enviar",
+    hero_cta_upload: "Enviar um Arquivo",
+    hero_stat_speed: "Velocidade Gigabit Direta",
+    hero_stat_privacy: "Token de Exclusão Exclusivo",
+    hero_stat_nowait: "0s Espera nem Captchas",
+    about_badge: "Missão e Filosofia",
+    about_title: "About Us",
+    about_subtitle: "Projetado para eliminar atritos no compartilhamento de arquivos na web.",
+    about_concept_title: "Conceito",
+    about_concept_desc: "O LettingWork é uma plataforma web moderna e leve de armazenamento e compartilhamento de arquivos inspirada em serviços como Mediafire e Mega.",
+    about_purpose_title: "Propósito Central",
+    about_purpose_desc: "Resolve as frustrações dos serviços tradicionais eliminando cadastros obrigatórios, publicidade invasiva e contagens regressivas de download.",
+    about_philosophy_title: "Filosofia",
+    about_philosophy_desc: "Limpo, direto e acessível para todos, tanto em navegadores de computador quanto em dispositivos móveis Android.",
+    about_preview_title: "Apresentação Oficial LettingWork",
+    about_preview_desc: "Interface limpa e veloz sem esperas irritantes, criada por Ivandoski para oferecer links diretos com máxima confiabilidade.",
+    metric_uptime: "Disponibilidade Uptime",
+    metric_queues: "Filas de Espera",
+    metric_limit: "Capacidade por Arquivo",
+    metric_direct: "Links Diretos",
+    recent_title: "Seus Uploads Recentes",
+    recent_subtitle: "Gerencie, baixe ou exclua seus links ativos",
+    recent_empty: "Nenhum arquivo recente enviado a partir deste navegador. Use o menu para enviar um!",
+    upload_modal_title: "Enviar Arquivos para a Nuvem",
+    upload_modal_subtitle: "Arraste ou selecione um arquivo para criar um link direto imediato",
+    dropzone_title: "Arraste e solte o seu arquivo aqui",
+    dropzone_subtitle: "ou clique para navegar no seu computador ou celular",
+    dropzone_hint: "Suporta arquivos de até 10 GB sem compressão forçada",
+    btn_cancel: "Cancelar",
+    success_ready: "Seu arquivo está pronto para compartilhar!",
+    success_copy_desc: "Copie este link direto para enviar a quem desejar:",
+    btn_copy_link: "Copiar Link",
+    btn_open_page: "Abrir Página de Download",
+    btn_direct_download: "Download Direto",
+    btn_qr_code: "Código QR",
+    btn_upload_another: "Enviar Outro Arquivo",
+    btn_upload_file: "Enviar Arquivo",
+    auth_tab_login: "Iniciar Sessão",
+    auth_tab_register: "Criar Conta",
+    auth_btn_google: "Continuar com o Google",
+    auth_divider_or: "ou com sua conta",
+    auth_label_username: "Usuário ou Email",
+    auth_label_reg_username: "Nome de Usuário",
+    auth_label_reg_email: "Endereço de Email",
+    auth_label_password: "Senha",
+    auth_btn_submit_login: "Entrar",
+    auth_btn_submit_register: "Criar Conta Gratuita",
+    google_dialog_title: "Escolha uma conta",
+    google_dialog_sub: "para continuar no LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "ou usar outra conta do Google",
+    google_btn_continue: "Continuar",
+    toast_google_success: "Sessão iniciada com o Google!",
+    qr_title: "Digitalize com o seu celular",
+    qr_desc: "Baixe o arquivo diretamente no seu dispositivo móvel",
+    btn_close: "Fechar",
+    footer_tagline: "Armazenamento e compartilhamento de arquivos em nuvem rápido e seguro.",
+    loading_file: "Carregando arquivo...",
+    loading_file_desc: "Conectando à rede de distribuição",
+    btn_download_file: "Baixar Arquivo",
+    btn_share_link: "Compartilhar Link",
+    badge_secure: "Download Direto & Seguro",
+    badge_no_wait: "Sem tempos de espera",
+    badge_clean: "Livre de Malware Verificado",
+    error_not_available: "Arquivo indisponível",
+    error_not_available_desc: "O arquivo procurado não existe, expirou ou foi excluído.",
+    btn_back_home: "Ir para LettingWork",
+    toast_copied: "Link copiado para a área de transferência!",
+    toast_uploaded: "Arquivo enviado com sucesso!",
+    toast_deleted: "Arquivo excluído com sucesso",
+    toast_login_success: "Sessão iniciada com sucesso!",
+    toast_register_success: "Conta criada com sucesso!",
+    toast_logout: "Sessão encerrada com sucesso",
+    confirm_delete: "Tem certeza de que deseja excluir permanentemente este arquivo?",
+    downloads_suffix: "downloads",
+    today: "Hoje"
+  },
+  "nl-be": {
+    lang_name: "Nederlands (België)",
+    lang_flag: "🇧🇪",
+    beta_notice: "🚀 LettingWork bevindt zich in de <strong>BETA</strong>-fase (v0.1.0). Een fout ontdekt?",
+    beta_report: "Meld het op GitHub &rarr;",
+    nav_upload: "Bestand Uploaden",
+    nav_about: "Over Ons",
+    nav_files: "Mijn Bestanden",
+    nav_menu: "Menu",
+    drawer_guest_greeting: "Gastmodus",
+    drawer_guest_desc: "Meld u aan om uw bestanden overal eenvoudig te beheren",
+    drawer_btn_login: "Aanmelden",
+    drawer_btn_register: "Account Maken",
+    drawer_btn_logout: "Afmelden",
+    drawer_btn_upload: "Bestanden Uploaden",
+    drawer_storage_title: "Cloud-opslag",
+    drawer_storage_plan: "Gratis Plan",
+    drawer_storage_unmetered: "Onbeperkt",
+    drawer_nav_my_files: "Mijn Bestanden",
+    drawer_nav_about: "Over Ons",
+    drawer_nav_security: "Beveiliging en Versleuteling",
+    drawer_nav_status: "Systemen Operationeel",
+    drawer_version_text: "Versie 0.1.0",
+    drawer_badge_beta: "BETA",
+    hero_badge: "Officiële Presentatie • Cloud Storage",
+    hero_title: "Letting<span class='glow'>work</span>",
+    hero_author: "Door Ivandoski",
+    hero_desc: "Ultrasnelle cloud bestandsopslag- en distributieplatform. Upload bestanden via het zijmenu met directe links en volledige privacy.",
+    hero_cta_menu: "Menu Openen om te Uploaden",
+    hero_cta_upload: "Bestand Uploaden",
+    hero_stat_speed: "Directe Gigabit-snelheid",
+    hero_stat_privacy: "Uniek Verwijderingstoken",
+    hero_stat_nowait: "0s Wachttijden of Captcha's",
+    about_badge: "Missie & Filosofie",
+    about_title: "About Us",
+    about_subtitle: "Ontworpen om alle frictie bij bestandsdeling op het web weg te nemen.",
+    about_concept_title: "Concept",
+    about_concept_desc: "LettingWork is een modern, lichtgewicht webplatform voor cloudopslag en bestandsdeling, geïnspireerd op diensten zoals Mediafire en Mega.",
+    about_purpose_title: "Kerndoel",
+    about_purpose_desc: "Lost de frictie van traditionele tools op door verplichte registraties, opdringerige reclame en aftellende timers te elimineren.",
+    about_philosophy_title: "Filosofie",
+    about_philosophy_desc: "Schoon, direct en toegankelijk voor iedereen, zowel op desktopbrowsers als op mobiele Android-apparaten.",
+    about_preview_title: "Officiële LettingWork Presentatie",
+    about_preview_desc: "Een schone en snelle interface zonder wachttijden, ontworpen door Ivandoski voor directe downloadlinks met maximale betrouwbaarheid.",
+    metric_uptime: "Uptime Beschikbaarheid",
+    metric_queues: "Wachtrijen",
+    metric_limit: "Capaciteit per Bestand",
+    metric_direct: "Directe Links",
+    recent_title: "Uw Recente Uploads",
+    recent_subtitle: "Beheer, download of verwijder uw actieve links",
+    recent_empty: "Nog geen recente uploads in deze browsersessie. Gebruik het menu om een bestand te uploaden!",
+    upload_modal_title: "Bestanden Uploaden naar de Cloud",
+    upload_modal_subtitle: "Sleep of kies een bestand om meteen een directe deelbare link te genereren",
+    dropzone_title: "Sleep uw bestand hierheen",
+    dropzone_subtitle: "of klik om door uw computer of telefoon te bladeren",
+    dropzone_hint: "Ondersteunt bestanden tot 10 GB zonder geforceerde compressie",
+    btn_cancel: "Annuleren",
+    success_ready: "Uw bestand is klaar om te delen!",
+    success_copy_desc: "Kopieer deze directe link om te delen met wie u maar wilt:",
+    btn_copy_link: "Link Kopiëren",
+    btn_open_page: "Downloadpagina Openen",
+    btn_direct_download: "Directe Download",
+    btn_qr_code: "QR-code",
+    btn_upload_another: "Nog Een Bestand Uploaden",
+    btn_upload_file: "Bestand Uploaden",
+    auth_tab_login: "Aanmelden",
+    auth_tab_register: "Account Maken",
+    auth_btn_google: "Doorgaan met Google",
+    auth_divider_or: "of met uw account",
+    auth_label_username: "Gebruikersnaam of E-mail",
+    auth_label_reg_username: "Gebruikersnaam",
+    auth_label_reg_email: "E-mailadres",
+    auth_label_password: "Wachtwoord",
+    auth_btn_submit_login: "Inloggen",
+    auth_btn_submit_register: "Gratis Account Maken",
+    google_dialog_title: "Kies een account",
+    google_dialog_sub: "om door te gaan naar LettingWork (lettingwork.onrender.com)",
+    google_custom_or: "of een ander Google-account gebruiken",
+    google_btn_continue: "Doorgaan",
+    toast_google_success: "Succesvol aangemeld met Google!",
+    qr_title: "Scan met uw mobiele telefoon",
+    qr_desc: "Download het bestand direct op uw smartphone",
+    btn_close: "Sluiten",
+    footer_tagline: "Snelle en veilige cloud bestandsdeling en opslag.",
+    loading_file: "Bestand laden...",
+    loading_file_desc: "Verbinden met distributienetwerk",
+    btn_download_file: "Bestand Downloaden",
+    btn_share_link: "Link Delen",
+    badge_secure: "Directe & Veilige Download",
+    badge_no_wait: "Geen wachttijden",
+    badge_clean: "Geverifieerd Malwarevrij",
+    error_not_available: "Bestand niet beschikbaar",
+    error_not_available_desc: "Het bestand dat u zoekt bestaat niet meer, is verlopen of verwijderd.",
+    btn_back_home: "Ga naar LettingWork",
+    toast_copied: "Link gekopieerd naar klembord!",
+    toast_uploaded: "Bestand succesvol geüpload!",
+    toast_deleted: "Bestand succesvol verwijderd",
+    toast_login_success: "Succesvol aangemeld!",
+    toast_register_success: "Account succesvol aangemaakt!",
+    toast_logout: "Succesvol afgemeld",
+    confirm_delete: "Weet u zeker dat u dit bestand permanent wilt verwijderen?",
+    downloads_suffix: "downloads",
+    today: "Vandaag"
+  }
+};
+
+let currentLang = localStorage.getItem("lettingwork_lang") || "es";
+let currentUser = null;
+
+// ============================================================
+// Internationalization Logic
+// ============================================================
+function applyTranslations(lang) {
+  if (!I18N[lang]) lang = "es";
+  currentLang = lang;
+  localStorage.setItem("lettingwork_lang", lang);
+  const dict = I18N[lang];
+
+  // Update Language Selector Button
+  const langFlagEl = document.getElementById("current-lang-flag");
+  const langTextEl = document.getElementById("current-lang-text");
+  if (langFlagEl) langFlagEl.textContent = dict.lang_flag;
+  if (langTextEl) langTextEl.textContent = dict.lang_name;
+
+  // Highlight active option in dropdown
+  document.querySelectorAll(".lang-option").forEach(btn => {
+    const fnStr = btn.getAttribute("onclick") || "";
+    if (fnStr.includes(`'${lang}'`)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+
+  // Update all elements with data-i18n
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (dict[key]) {
+      el.innerHTML = dict[key];
+    }
+  });
+
+  // Re-render recent list if present
+  renderRecentUploads();
+}
+
+function toggleLangMenu() {
+  const menu = document.getElementById("lang-dropdown");
+  if (menu) {
+    menu.classList.toggle("show");
+  }
+}
+
+function selectLanguage(lang) {
+  applyTranslations(lang);
+  const menu = document.getElementById("lang-dropdown");
+  if (menu) menu.classList.remove("show");
+}
+
+// Close language dropdown if clicked outside
+document.addEventListener("click", (e) => {
+  const wrapper = document.querySelector(".lang-dropdown-wrapper");
+  if (wrapper && !wrapper.contains(e.target)) {
+    const menu = document.getElementById("lang-dropdown");
+    if (menu) menu.classList.remove("show");
+  }
+});
+
+// Format bytes into human readable string
+function formatBytes(bytes, decimals = 2) {
+  if (!+bytes) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+// Toast notification
+function showToast(message, isError = false) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.borderColor = isError ? 'var(--accent-red)' : 'var(--accent-green)';
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3200);
+}
+
+// ============================================================
+// MediaFire-Style Drawer Side Menu
+// ============================================================
+function toggleDrawer() {
+  const drawer = document.getElementById("side-drawer");
+  const backdrop = document.getElementById("drawer-backdrop");
+  if (!drawer) return;
+
+  const isOpen = drawer.classList.contains("open");
+  if (isOpen) {
+    closeDrawer();
+  } else {
+    openDrawer();
+  }
+}
+
+function openDrawer() {
+  const drawer = document.getElementById("side-drawer");
+  const backdrop = document.getElementById("drawer-backdrop");
+  if (drawer) drawer.classList.add("open");
+  if (backdrop) backdrop.classList.add("active");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDrawer() {
+  const drawer = document.getElementById("side-drawer");
+  const backdrop = document.getElementById("drawer-backdrop");
+  if (drawer) drawer.classList.remove("open");
+  if (backdrop) backdrop.classList.remove("active");
+  document.body.style.overflow = "";
+}
+
+function triggerDrawerUpload() {
+  closeDrawer();
+  openUploadModal();
+}
+
+// ============================================================
+// Upload Modal Controls (Clean Homepage UX)
+// ============================================================
+function openUploadModal() {
+  const modal = document.getElementById("upload-modal");
+  if (modal) {
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+}
+
+function closeUploadModal() {
+  const modal = document.getElementById("upload-modal");
+  if (modal) {
+    modal.style.display = "none";
+    document.body.style.overflow = "";
+  }
+}
+
+// ============================================================
+// User Authentication & Session
+// ============================================================
+function checkAuthStatus() {
+  fetch("/api/auth/me")
+    .then(res => res.json())
+    .then(data => {
+      if (data.authenticated && data.user) {
+        currentUser = data.user;
+        updateUserUI(currentUser);
+      } else {
+        currentUser = null;
+        updateUserUI(null);
+      }
+    })
+    .catch(() => {
+      currentUser = null;
+      updateUserUI(null);
+    });
+}
+
+function updateUserUI(user) {
+  const navUserLabel = document.getElementById("nav-user-label");
+  const navAvatarChar = document.getElementById("nav-avatar-char");
+  const drawerName = document.getElementById("drawer-user-name");
+  const drawerSub = document.getElementById("drawer-user-sub");
+  const drawerAvatar = document.getElementById("drawer-avatar-display");
+  const drawerAuthActions = document.getElementById("drawer-auth-actions");
+  const drawerLoggedActions = document.getElementById("drawer-logged-actions");
+  const storageUsedText = document.getElementById("storage-used-text");
+  const storageBarFill = document.getElementById("storage-bar-fill");
+
+  const dict = I18N[currentLang] || I18N.es;
+
+  if (user) {
+    const initial = (user.username || "U")[0].toUpperCase();
+    if (navUserLabel) navUserLabel.textContent = user.username;
+    if (navAvatarChar) navAvatarChar.textContent = initial;
+
+    if (drawerName) drawerName.textContent = user.username;
+    if (drawerSub) drawerSub.textContent = user.email || "Usuario Verificado";
+    if (drawerAvatar) {
+      drawerAvatar.className = "drawer-avatar";
+      drawerAvatar.textContent = initial;
+    }
+
+    if (drawerAuthActions) drawerAuthActions.style.display = "none";
+    if (drawerLoggedActions) drawerLoggedActions.style.display = "block";
+
+    // Update storage meter
+    const usedBytes = user.storage_used_bytes || 0;
+    const maxBytes = 10 * 1024 * 1024 * 1024; // 10 GB Free Tier
+    const pct = Math.max(1, Math.min(100, Math.round((usedBytes / maxBytes) * 100)));
+    if (storageUsedText) {
+      storageUsedText.textContent = `${formatBytes(usedBytes)} de 10 GB`;
+    }
+    if (storageBarFill) {
+      storageBarFill.style.width = `${pct}%`;
+    }
+
+    fetchUserFiles();
+  } else {
+    if (navUserLabel) navUserLabel.textContent = dict.nav_menu;
+    if (navAvatarChar) navAvatarChar.textContent = "G";
+
+    if (drawerName) drawerName.textContent = dict.drawer_guest_greeting;
+    if (drawerSub) drawerSub.textContent = dict.drawer_guest_desc;
+    if (drawerAvatar) {
+      drawerAvatar.className = "drawer-avatar guest";
+      drawerAvatar.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      `;
+    }
+
+    if (drawerAuthActions) drawerAuthActions.style.display = "flex";
+    if (drawerLoggedActions) drawerLoggedActions.style.display = "none";
+    if (storageUsedText) storageUsedText.textContent = "0.0 MB de 10 GB";
+    if (storageBarFill) storageBarFill.style.width = "2%";
+  }
+}
+
+function openAuthModal(tab = "login") {
+  closeDrawer();
+  const modal = document.getElementById("auth-modal");
+  if (modal) modal.style.display = "flex";
+  switchAuthTab(tab);
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById("auth-modal");
+  if (modal) modal.style.display = "none";
+  const errAlert = document.getElementById("auth-error-alert");
+  if (errAlert) errAlert.style.display = "none";
+}
+
+function switchAuthTab(tab) {
+  const tabLogin = document.getElementById("tab-btn-login");
+  const tabReg = document.getElementById("tab-btn-register");
+  const formLogin = document.getElementById("form-login");
+  const formReg = document.getElementById("form-register");
+  const errAlert = document.getElementById("auth-error-alert");
+  if (errAlert) errAlert.style.display = "none";
+
+  if (tab === "login") {
+    if (tabLogin) tabLogin.classList.add("active");
+    if (tabReg) tabReg.classList.remove("active");
+    if (formLogin) formLogin.style.display = "block";
+    if (formReg) formReg.style.display = "none";
+  } else {
+    if (tabLogin) tabLogin.classList.remove("active");
+    if (tabReg) tabReg.classList.add("active");
+    if (formLogin) formLogin.style.display = "none";
+    if (formReg) formReg.style.display = "block";
+  }
+}
+
+function submitLogin(event) {
+  event.preventDefault();
+  const identifier = document.getElementById("login-identifier").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errAlert = document.getElementById("auth-error-alert");
+
+  fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success && data.user) {
+      currentUser = data.user;
+      updateUserUI(currentUser);
+      closeAuthModal();
+      const dict = I18N[currentLang] || I18N.es;
+      showToast(dict.toast_login_success);
+    } else {
+      if (errAlert) {
+        errAlert.textContent = data.error || "Credenciales incorrectas";
+        errAlert.style.display = "block";
+      }
+    }
+  })
+  .catch(() => {
+    if (errAlert) {
+      errAlert.textContent = "Error de red al conectar con el servidor";
+      errAlert.style.display = "block";
+    }
+  });
+}
+
+function submitRegister(event) {
+  event.preventDefault();
+  const username = document.getElementById("reg-username").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const password = document.getElementById("reg-password").value;
+  const errAlert = document.getElementById("auth-error-alert");
+
+  fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, password })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success && data.user) {
+      currentUser = data.user;
+      updateUserUI(currentUser);
+      closeAuthModal();
+      const dict = I18N[currentLang] || I18N.es;
+      showToast(dict.toast_register_success);
+    } else {
+      if (errAlert) {
+        errAlert.textContent = data.error || "Error al crear la cuenta";
+        errAlert.style.display = "block";
+      }
+    }
+  })
+  .catch(() => {
+    if (errAlert) {
+      errAlert.textContent = "Error de conexión con el servidor";
+      errAlert.style.display = "block";
+    }
+  });
+}
+
+function handleLogout() {
+  fetch("/api/auth/logout", { method: "POST" })
+    .then(res => res.json())
+    .then(() => {
+      currentUser = null;
+      updateUserUI(null);
+      const dict = I18N[currentLang] || I18N.es;
+      showToast(dict.toast_logout);
+    })
+    .catch(() => {
+      currentUser = null;
+      updateUserUI(null);
+    });
+}
+
+function fetchUserFiles() {
+  if (!currentUser) return;
+  fetch("/api/user/files")
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && Array.isArray(data.files)) {
+        const localUploads = getStoredUploads();
+        const combinedMap = new Map();
+        
+        data.files.forEach(f => {
+          combinedMap.set(f.id, {
+            id: f.id,
+            original_name: f.original_name,
+            size_bytes: f.size_bytes,
+            share_url: `/f/${f.id}`,
+            delete_token: f.delete_token,
+            timestamp: f.upload_time
+          });
+        });
+
+        localUploads.forEach(u => {
+          if (!combinedMap.has(u.id)) {
+            combinedMap.set(u.id, u);
+          }
+        });
+
+        const updated = Array.from(combinedMap.values());
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated.slice(0, 40)));
+        renderRecentUploads();
+      }
+    })
+    .catch(() => {});
+}
+
+// ============================================================
+// Local Storage for Recent Uploads
+// ============================================================
+const STORAGE_KEY = 'lettingwork_uploads';
+
+function getStoredUploads() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveUploadRecord(record) {
+  const uploads = getStoredUploads();
+  const filtered = uploads.filter(u => u.id !== record.id);
+  filtered.unshift(record);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered.slice(0, 40)));
+  renderRecentUploads();
+}
+
+function removeStoredUpload(id) {
+  const uploads = getStoredUploads().filter(u => u.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(uploads));
+  renderRecentUploads();
+}
+
+function renderRecentUploads() {
+  const container = document.getElementById('recent-list');
+  if (!container) return;
+
+  const dict = I18N[currentLang] || I18N.es;
+  const uploads = getStoredUploads();
+  if (uploads.length === 0) {
+    container.innerHTML = `
+      <div class="recent-empty">
+        <p>${dict.recent_empty}</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  uploads.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    const fullUrl = item.share_url.startsWith('http') ? item.share_url : `${window.location.origin}${item.share_url}`;
+    const copyLabel = currentLang === 'en' ? 'Copy' : (currentLang === 'es' ? 'Copiar' : 'Copy');
+    
+    row.innerHTML = `
+      <div class="file-row-info">
+        <div class="file-meta-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        <div>
+          <div style="font-weight:600; font-size: 0.95rem;">${escapeHtml(item.original_name)}</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">${formatBytes(item.size_bytes)} • ${new Date(item.timestamp).toLocaleDateString()}</div>
+        </div>
+      </div>
+      <div class="file-row-actions">
+        <button class="btn btn-secondary btn-sm" onclick="copyText('${fullUrl}')" title="${dict.btn_copy_link}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          ${copyLabel}
+        </button>
+        <a href="${fullUrl}" class="btn btn-secondary btn-sm" target="_blank" title="View file">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+        <button class="btn btn-danger btn-sm" onclick="deleteFile('${item.id}', '${item.delete_token}')" title="Delete file">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function escapeHtml(string) {
+  const entityMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+  return String(string).replace(/[&<>"']/g, s => entityMap[s]);
+}
+
+function copyText(text) {
+  const dict = I18N[currentLang] || I18N.es;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(dict.toast_copied);
+    }).catch(() => {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const dict = I18N[currentLang] || I18N.es;
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  document.body.appendChild(textArea);
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    showToast(dict.toast_copied);
+  } catch (err) {
+    showToast('Failed to copy', true);
+  }
+  document.body.removeChild(textArea);
+}
+
+// ============================================================
+// Upload Handling
+// ============================================================
+let currentXHR = null;
+
+function setupUpload() {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  if (!dropzone || !fileInput) return;
+
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('dragover');
+    }, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    }, false);
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleFileUpload(e.target.files[0]);
+    }
+  });
+
+  // Global drag-and-drop onto the window opens the upload modal automatically
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  }, false);
+
+  window.addEventListener('drop', (e) => {
+    // If drop occurred outside dropzone, still trigger upload
+    if (!dropzone.contains(e.target)) {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        openUploadModal();
+        handleFileUpload(e.dataTransfer.files[0]);
+      }
+    }
+  }, false);
+}
+
+function handleFileUpload(file) {
+  openUploadModal();
+
+  const dropzone = document.getElementById('dropzone');
+  const progressBox = document.getElementById('progress-box');
+  const successCard = document.getElementById('success-card');
+  const fileNamePreview = document.getElementById('upload-filename');
+  const fileSizePreview = document.getElementById('upload-filesize');
+  const progressBar = document.getElementById('progress-bar');
+  const progressPercent = document.getElementById('progress-percent');
+  const progressTransferred = document.getElementById('progress-transferred');
+
+  if (dropzone) dropzone.style.display = 'none';
+  if (successCard) successCard.style.display = 'none';
+  if (progressBox) progressBox.style.display = 'block';
+
+  fileNamePreview.textContent = file.name;
+  fileSizePreview.textContent = formatBytes(file.size);
+  progressBar.style.width = '0%';
+  progressPercent.textContent = '0%';
+  progressTransferred.textContent = `0 / ${formatBytes(file.size)}`;
+
+  const startTime = Date.now();
+  currentXHR = new XMLHttpRequest();
+
+  currentXHR.upload.addEventListener('progress', (e) => {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      progressBar.style.width = percent + '%';
+      progressPercent.textContent = percent + '%';
+      
+      const elapsedSec = (Date.now() - startTime) / 1000;
+      const speed = elapsedSec > 0 ? (e.loaded / elapsedSec) : 0;
+      const ofLabel = currentLang === 'en' ? 'of' : (currentLang === 'es' ? 'de' : 'de');
+      progressTransferred.textContent = `${formatBytes(e.loaded)} ${ofLabel} ${formatBytes(e.total)} (${formatBytes(speed)}/s)`;
+    }
+  });
+
+  currentXHR.addEventListener('load', () => {
+    if (currentXHR.status === 200) {
+      try {
+        const response = JSON.parse(currentXHR.responseText);
+        if (response.success) {
+          onUploadSuccess(response, file);
+        } else {
+          showToast(response.error || 'Upload error', true);
+          resetUploadUI();
+        }
+      } catch (err) {
+        showToast('Server response error', true);
+        resetUploadUI();
+      }
+    } else {
+      showToast('Error uploading file: ' + currentXHR.statusText, true);
+      resetUploadUI();
+    }
+  });
+
+  currentXHR.addEventListener('error', () => {
+    showToast('Network error during upload', true);
+    resetUploadUI();
+  });
+
+  currentXHR.open('POST', '/api/upload');
+  currentXHR.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+  currentXHR.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+  currentXHR.send(file);
+}
+
+function cancelUpload() {
+  if (currentXHR) {
+    currentXHR.abort();
+    currentXHR = null;
+    const dict = I18N[currentLang] || I18N.es;
+    showToast(dict.btn_cancel);
+    resetUploadUI();
+  }
+}
+
+function resetUploadUI() {
+  const dropzone = document.getElementById('dropzone');
+  const progressBox = document.getElementById('progress-box');
+  const successCard = document.getElementById('success-card');
+  const fileInput = document.getElementById('file-input');
+
+  if (fileInput) fileInput.value = '';
+  if (dropzone) dropzone.style.display = 'block';
+  if (progressBox) progressBox.style.display = 'none';
+  if (successCard) successCard.style.display = 'none';
+}
+
+function onUploadSuccess(data, originalFile) {
+  const progressBox = document.getElementById('progress-box');
+  const successCard = document.getElementById('success-card');
+  const shareLinkInput = document.getElementById('share-link-input');
+  const directDownloadBtn = document.getElementById('btn-direct-download');
+  const viewPageBtn = document.getElementById('btn-view-page');
+  const qrBtn = document.getElementById('btn-show-qr');
+
+  if (progressBox) progressBox.style.display = 'none';
+  if (successCard) successCard.style.display = 'block';
+
+  const fullShareUrl = `${window.location.origin}${data.share_url}`;
+  if (shareLinkInput) shareLinkInput.value = fullShareUrl;
+
+  if (viewPageBtn) viewPageBtn.href = fullShareUrl;
+  if (directDownloadBtn) directDownloadBtn.href = `/api/download/${data.id}`;
+
+  if (qrBtn) {
+    qrBtn.onclick = () => openQRModal(fullShareUrl);
+  }
+
+  saveUploadRecord({
+    id: data.id,
+    original_name: data.original_name,
+    size_bytes: data.size_bytes,
+    share_url: data.share_url,
+    delete_token: data.delete_token,
+    timestamp: new Date().toISOString()
+  });
+
+  const dict = I18N[currentLang] || I18N.es;
+  showToast(dict.toast_uploaded);
+  checkAuthStatus();
+}
+
+function copyShareLink() {
+  const shareLinkInput = document.getElementById('share-link-input');
+  if (shareLinkInput) {
+    copyText(shareLinkInput.value);
+  }
+}
+
+// Delete File API
+function deleteFile(fileId, deleteToken) {
+  const dict = I18N[currentLang] || I18N.es;
+  if (!confirm(dict.confirm_delete)) {
+    return;
+  }
+
+  fetch(`/api/file/${fileId}`, {
+    method: 'DELETE',
+    headers: {
+      'X-Delete-Token': deleteToken
+    }
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      showToast(dict.toast_deleted);
+      removeStoredUpload(fileId);
+      checkAuthStatus();
+    } else {
+      showToast(data.error || 'Failed to delete file', true);
+    }
+  })
+  .catch(() => {
+    showToast('Network error deleting file', true);
+  });
+}
+
+function openQRModal(url) {
+  const modal = document.getElementById('qr-modal');
+  const qrContainer = document.getElementById('qrcode-container');
+  if (!modal || !qrContainer) return;
+
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
+  qrContainer.innerHTML = `<img src="${qrApiUrl}" alt="QR Code" width="220" height="220" style="display:block; margin:0 auto; border-radius:8px;">`;
+  modal.style.display = 'flex';
+}
+
+function closeQRModal() {
+  const modal = document.getElementById('qr-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// ============================================================
+// Download Page Logic
+// ============================================================
+function initDownloadPage() {
+  const fileId = window.location.pathname.replace('/f/', '').replace('/', '');
+  if (!fileId) return;
+
+  const dict = I18N[currentLang] || I18N.es;
+
+  fetch(`/api/info/${fileId}`)
+    .then(res => res.json())
+    .then(data => {
+      const loadingEl = document.getElementById('download-loading');
+      const contentEl = document.getElementById('download-content');
+      const errorEl = document.getElementById('download-error');
+
+      if (data.success && data.file) {
+        const file = data.file;
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (contentEl) contentEl.style.display = 'block';
+
+        document.getElementById('dl-file-name').textContent = file.original_name;
+        document.getElementById('dl-file-size').textContent = formatBytes(file.size_bytes);
+        document.getElementById('dl-upload-date').textContent = new Date(file.upload_time).toLocaleDateString();
+        document.getElementById('dl-count').textContent = `${file.download_count} ${dict.downloads_suffix}`;
+        
+        const dlBtn = document.getElementById('dl-btn-action');
+        dlBtn.href = `/api/download/${file.id}`;
+        dlBtn.innerHTML = `
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          ${dict.btn_download_file} (${formatBytes(file.size_bytes)})
+        `;
+
+        const copyBtn = document.getElementById('dl-btn-copy');
+        if (copyBtn) {
+          copyBtn.onclick = () => copyText(window.location.href);
+        }
+
+        const qrBtn = document.getElementById('dl-btn-qr');
+        if (qrBtn) {
+          qrBtn.onclick = () => openQRModal(window.location.href);
+        }
+      } else {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (errorEl) errorEl.style.display = 'block';
+      }
+    })
+    .catch(() => {
+      const loadingEl = document.getElementById('download-loading');
+      const errorEl = document.getElementById('download-error');
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (errorEl) errorEl.style.display = 'block';
+    });
+}
+
+// Global initialization
+document.addEventListener('DOMContentLoaded', () => {
+  setupUpload();
+  applyTranslations(currentLang);
+  checkAuthStatus();
+
+  if (window.location.pathname.startsWith('/f/')) {
+    initDownloadPage();
+  }
+});
+
+=== static/style.css ===
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #141c2c;
+  --bg-card-hover: #1b263b;
+  --bg-drawer: #0d131f;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-active: #22d9ee;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-blue: #2563eb;
+  --accent-cyan: #22d9ee;
+  --accent-purple: #8b3dff;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-amber: #f59e0b;
+  --gradient-brand: linear-gradient(135deg, #22d9ee 0%, #2563eb 50%, #8b3dff 100%);
+  --gradient-card: linear-gradient(180deg, rgba(20, 28, 44, 0.75) 0%, rgba(13, 19, 31, 0.95) 100%);
+  --gradient-drawer: linear-gradient(180deg, #101623 0%, #080c14 100%);
+  --shadow-glow: 0 0 30px rgba(34, 217, 238, 0.2);
+  --shadow-drawer: -14px 0 45px rgba(0, 0, 0, 0.7);
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 10% 15%, rgba(34, 217, 238, 0.1) 0%, transparent 45%),
+    radial-gradient(circle at 90% 80%, rgba(139, 61, 255, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.05) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Beta Banner */
+.beta-banner {
+  background: linear-gradient(90deg, rgba(34, 217, 238, 0.12) 0%, rgba(139, 61, 255, 0.12) 100%);
+  border-bottom: 1px solid rgba(34, 217, 238, 0.2);
+  color: #cffafe;
+  text-align: center;
+  padding: 0.45rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  z-index: 90;
+}
+
+.beta-banner a {
+  color: #38bdf8;
+  text-decoration: underline;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.beta-banner a:hover {
+  opacity: 0.8;
+}
+
+/* Navbar */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(14px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 14, 23, 0.88);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  background: var(--gradient-brand);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(34, 217, 238, 0.35);
+}
+
+.brand span.accent {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+
+/* Nav Actions */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Quick Nav Links on Desktop */
+.nav-links-desktop {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-right: 0.75rem;
+}
+
+.nav-link {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: var(--text-main);
+}
+
+/* Language Dropdown Selector */
+.lang-dropdown-wrapper {
+  position: relative;
+}
+
+.lang-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.lang-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.lang-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #141c2c;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  width: 210px;
+  padding: 0.4rem;
+  z-index: 150;
+  animation: fadeIn 0.15s ease;
+}
+
+.lang-dropdown-menu.show {
+  display: block;
+}
+
+.lang-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.lang-option:hover {
+  background: rgba(34, 217, 238, 0.15);
+  color: #fff;
+}
+
+.lang-option.active {
+  background: rgba(34, 217, 238, 0.25);
+  font-weight: 600;
+  color: var(--accent-cyan);
+}
+
+/* Drawer Hamburger / Trigger Button (Mediafire Style) */
+.menu-trigger-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.menu-trigger-btn:hover {
+  background: rgba(34, 217, 238, 0.18);
+  border-color: var(--accent-cyan);
+}
+
+.user-badge-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--gradient-brand);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Slide-out Menu Drawer (MediaFire Inspired) */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(5px);
+  z-index: 300;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-backdrop.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.side-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 360px;
+  max-width: 90vw;
+  height: 100vh;
+  background: var(--gradient-drawer);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-drawer);
+  z-index: 310;
+  transform: translateX(100%);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.side-drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(16, 22, 35, 0.7);
+}
+
+.drawer-brand {
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drawer-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.drawer-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.drawer-body {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Drawer User / Guest Section */
+.drawer-profile-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.1rem;
+}
+
+.drawer-user-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.drawer-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--gradient-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px rgba(34, 217, 238, 0.3);
+}
+
+.drawer-avatar.guest {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+}
+
+.drawer-user-info .user-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-main);
+}
+
+.drawer-user-info .user-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.drawer-auth-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.drawer-auth-buttons .btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Drawer Big Upload Action Button */
+.drawer-upload-btn {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-weight: 700;
+}
+
+/* Storage Meter Widget (Mediafire Style) */
+.drawer-storage-widget {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.storage-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.storage-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.storage-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.storage-bar-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.storage-bar-fill {
+  width: 5%;
+  height: 100%;
+  background: var(--gradient-brand);
+  border-radius: 999px;
+}
+
+.storage-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Drawer Navigation Links */
+.drawer-menu-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.drawer-menu-item a, .drawer-menu-item button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.drawer-menu-item a:hover, .drawer-menu-item button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  transform: translateX(3px);
+}
+
+.drawer-menu-item svg {
+  color: var(--accent-cyan);
+  flex-shrink: 0;
+}
+
+.server-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+  display: inline-block;
+  margin-left: auto;
+}
+
+/* DRAWER FOOTER (Required: 0.1.0 and BETA) */
+.drawer-footer {
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  background: rgba(8, 12, 20, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.drawer-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.version-text {
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.02em;
+}
+
+.badge-beta-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.drawer-copy-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Main Container */
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+  width: 100%;
+  flex: 1;
+}
+
+/* ============================================================
+   PORTADA SHOWCASE (Limpia, sin tapar, con menú y acciones abajo)
+   ============================================================ */
+.portada-section {
+  margin-bottom: 4rem;
+}
+
+.portada-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid rgba(34, 217, 238, 0.4);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75), 0 0 40px rgba(34, 217, 238, 0.18);
+  background: #000;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.portada-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8), 0 0 50px rgba(34, 217, 238, 0.25);
+}
+
+.portada-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.portada-menu-bar {
+  margin-top: 1.75rem;
+  background: rgba(20, 28, 44, 0.7);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  backdrop-filter: blur(10px);
+}
+
+.portada-buttons-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.btn-lg {
+  padding: 0.85rem 1.6rem;
+  font-size: 1rem;
+}
+
+.live-web-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.95rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  transition: all 0.2s;
+}
+
+.live-web-badge:hover {
+  color: #fff;
+  border-color: var(--accent-cyan);
+  background: rgba(34, 217, 238, 0.12);
+}
+
+.portada-stats-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+  justify-content: center;
+}
+
+.hero-stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+.hero-stat-pill svg {
+  color: var(--accent-cyan);
+}
+
+/* ============================================================
+   ABOUT US SECTION (Imagen Directa de Canva Slide 2)
+   ============================================================ */
+.about-section {
+  margin-top: 3.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.about-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.about-badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-cyan);
+  background: rgba(34, 217, 238, 0.1);
+  border: 1px solid rgba(34, 217, 238, 0.3);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+}
+
+.about-header h2 {
+  font-size: 2.35rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.about-header p {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.about-image-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid rgba(139, 61, 255, 0.35);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(139, 61, 255, 0.15);
+  background: #000;
+  margin-bottom: 2.5rem;
+}
+
+.about-slide-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+/* Google Sign In Button */
+.google-auth-container {
+  margin-bottom: 1.25rem;
+}
+
+.btn-google {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.btn-google:hover {
+  background: #f8fafc;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  transform: translateY(-1px);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.auth-divider span {
+  padding: 0 0.75rem;
+}
+
+/* Google Account Chooser Modal */
+.google-dialog-card {
+  background: #ffffff;
+  color: #1f2937;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 420px;
+  padding: 1.75rem;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
+  position: relative;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.google-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.google-dialog-header .modal-close-btn {
+  color: #6b7280;
+}
+.google-dialog-header .modal-close-btn:hover {
+  color: #111827;
+}
+
+.google-dialog-title {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+
+.google-dialog-sub {
+  font-size: 0.88rem;
+  color: #6b7280;
+  margin-bottom: 1.25rem;
+}
+
+.google-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.google-account-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.google-account-item:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+}
+
+.google-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.google-account-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.google-account-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.google-account-email {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.google-check-icon {
+  font-size: 1.5rem;
+  color: #9ca3af;
+  line-height: 1;
+}
+
+.google-custom-login {
+  margin-top: 0.5rem;
+}
+
+.google-dialog-card .auth-divider {
+  color: #9ca3af;
+}
+
+.google-dialog-card .auth-divider::before,
+.google-dialog-card .auth-divider::after {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.platform-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  text-align: center;
+}
+
+.metric-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 0.75rem;
+}
+
+.metric-num {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  margin-bottom: 0.25rem;
+}
+
+.metric-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Recent Uploads List */
+.recent-section {
+  margin-top: 4.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.recent-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.recent-title-row h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.recent-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.recent-empty {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card);
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.file-row:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.file-row-info {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  overflow: hidden;
+}
+
+.file-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ============================================================
+   UPLOAD MODAL (Accessible via Menu / Drawer / Drag&Drop)
+   ============================================================ */
+.upload-modal-content {
+  background: #121927;
+  border: 1px solid rgba(34, 217, 238, 0.35);
+  border-radius: var(--radius-lg);
+  padding: 2.25rem;
+  max-width: 580px;
+  width: 92%;
+  position: relative;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75), 0 0 35px rgba(34, 217, 238, 0.15);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.upload-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.upload-modal-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #fff;
+}
+
+/* Dropzone inside Modal */
+.dropzone-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-lg);
+  padding: 3rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.dropzone-card:hover, .dropzone-card.dragover {
+  border-color: var(--accent-cyan);
+  background: rgba(34, 217, 238, 0.08);
+  box-shadow: 0 0 20px rgba(34, 217, 238, 0.15);
+}
+
+.dropzone-card.dragover {
+  border-style: solid;
+}
+
+.dropzone-icon-box {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 1.25rem auto;
+  border-radius: 50%;
+  background: rgba(34, 217, 238, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-cyan);
+  transition: transform 0.25s ease;
+}
+
+.dropzone-card:hover .dropzone-icon-box {
+  transform: scale(1.1);
+  background: rgba(34, 217, 238, 0.2);
+}
+
+.dropzone-icon-box svg {
+  width: 34px;
+  height: 34px;
+}
+
+.dropzone-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.dropzone-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.dropzone-hint {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.file-input {
+  display: none;
+}
+
+/* Upload Progress Box */
+.progress-container {
+  display: none;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  margin-top: 1rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.file-meta-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.file-meta-icon {
+  background: rgba(34, 217, 238, 0.15);
+  color: var(--accent-cyan);
+  padding: 0.6rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+}
+
+.file-meta-details .name {
+  font-weight: 600;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta-details .size {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.progress-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--gradient-brand);
+  border-radius: 999px;
+  transition: width 0.15s ease;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Success Card */
+.success-card {
+  display: none;
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  margin-top: 1rem;
+  animation: fadeIn 0.35s ease;
+  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.12);
+}
+
+.success-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--accent-green);
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 1.15rem;
+}
+
+.success-header svg {
+  width: 26px;
+  height: 26px;
+}
+
+.link-box {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.35rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.link-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.65rem 0.85rem;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.35rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  user-select: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--gradient-brand);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(34, 217, 238, 0.3);
+}
+
+.btn-primary:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.btn-sm {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Download Page Specific Styling */
+.download-wrapper {
+  max-width: 620px;
+  margin: 3rem auto 0 auto;
+  width: 100%;
+}
+
+.download-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2.75rem 2rem;
+  text-align: center;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35);
+  position: relative;
+}
+
+.download-icon {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 1.5rem auto;
+  border-radius: 20px;
+  background: rgba(34, 217, 238, 0.15);
+  border: 1px solid rgba(34, 217, 238, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-cyan);
+}
+
+.download-icon svg {
+  width: 44px;
+  height: 44px;
+}
+
+.download-file-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  word-break: break-all;
+}
+
+.download-file-info {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
+.download-btn-huge {
+  width: 100%;
+  padding: 1.15rem 2rem;
+  font-size: 1.15rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.download-meta-badges {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.badge-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: #151e2e;
+  color: #fff;
+  padding: 0.85rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 999;
+}
+
+.toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* Modal Overlay (Generic) */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  z-index: 400;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2.25rem;
+  max-width: 420px;
+  width: 90%;
+  position: relative;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: var(--radius-sm);
+  font-size: 1.1rem;
+}
+
+.modal-close-btn:hover {
+  color: #fff;
+}
+
+#qrcode-container {
+  background: white;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  display: inline-block;
+  margin: 1.25rem 0;
+}
+
+/* Auth Modal Specifics */
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.auth-tab-btn.active {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+}
+
+.auth-form-group {
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.auth-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--text-main);
+}
+
+.auth-input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.auth-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(34, 217, 238, 0.2);
+}
+
+.auth-error-msg {
+  color: var(--accent-red);
+  font-size: 0.82rem;
+  margin-top: 0.4rem;
+  display: none;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  background: rgba(10, 14, 23, 0.6);
+}
+
+.footer-version-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 860px) {
+  .canva-pillars-grid { grid-template-columns: 1fr; }
+  .canva-slide-preview-container { grid-template-columns: 1fr; }
+  .canva-hero-title { font-size: 2.85rem; }
+  .platform-metrics-row { grid-template-columns: repeat(2, 1fr); }
+  .nav-links-desktop { display: none; }
+}
+
+@media (max-width: 640px) {
+  .navbar { padding: 0.85rem 1rem; }
+  .canva-hero-container { padding: 2rem 1.25rem; min-height: 400px; }
+  .canva-hero-title { font-size: 2.35rem; }
+  .file-row { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+  .file-row-actions { width: 100%; justify-content: flex-end; }
+  .success-actions { flex-direction: column; }
+  .success-actions .btn { width: 100%; }
+}
+
