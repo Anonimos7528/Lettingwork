@@ -20,3 +20,13 @@
     min-height: 100vh;
   }
 }
+
+@layer utilities {
+  .lw-bg-layer {
+    contain: strict;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+

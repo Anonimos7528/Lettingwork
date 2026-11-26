@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Pencil,
   Check,
+  Search,
 } from 'lucide-react';
 import pdfBgSvg from './assets/lettingwork_pdf_bg.svg';
 import portadaImg from './assets/lettingwork_portada.png';
@@ -50,6 +51,7 @@ import { AuthModal } from './components/AuthModal';
 import { QrModal } from './components/QrModal';
 import { DownloadView } from './components/DownloadView';
 import { HelpChatModal } from './components/HelpChatModal';
+import { StorageQuotaBar } from './components/StorageQuotaBar';
 
 const LOCAL_FILES_KEY = 'lettingwork_uploads';
 
@@ -90,6 +92,8 @@ function LettingWorkApp() {
   const [localFiles, setLocalFiles] = useState<UploadedFileRecord[]>(() => readLocalFiles());
   const [cloudFiles, setCloudFiles] = useState<UploadedFileRecord[]>([]);
   const [serverFiles, setServerFiles] = useState<UploadedFileRecord[]>([]);
+  const [cloudFilesLoading, setCloudFilesLoading] = useState(false);
+  const [serverFilesLoading, setServerFilesLoading] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -102,6 +106,7 @@ function LettingWorkApp() {
   const [chatOpen, setChatOpen] = useState(false);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null);
 
   const [heroImgError, setHeroImgError] = useState(false);
@@ -144,6 +149,7 @@ function LettingWorkApp() {
   }, []);
 
   const loadServerUserFiles = useCallback(async () => {
+    setServerFilesLoading(true);
     try {
       const res = await fetch('/api/user/files', { credentials: 'include' });
       if (!res.ok) return;
@@ -171,6 +177,8 @@ function LettingWorkApp() {
       }
     } catch {
       // Ignore transient network errors
+    } finally {
+      setServerFilesLoading(false);
     }
   }, []);
 
@@ -266,8 +274,10 @@ function LettingWorkApp() {
   useEffect(() => {
     if (!authReady || !firebaseUser) {
       setCloudFiles([]);
+      setCloudFilesLoading(false);
       return;
     }
+    setCloudFilesLoading(true);
     const filesPath = `users/${firebaseUser.uid}/files`;
     const q = query(collection(db, 'users', firebaseUser.uid, 'files'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
@@ -289,8 +299,10 @@ function LettingWorkApp() {
           };
         });
         setCloudFiles(rows);
+        setCloudFilesLoading(false);
       },
       (error) => {
+        setCloudFilesLoading(false);
         handleFirestoreError(error, OperationType.LIST, filesPath);
       }
     );
@@ -358,6 +370,14 @@ function LettingWorkApp() {
     });
     return Array.from(map.values());
   }, [cloudFiles, serverFiles, localFiles]);
+
+  const filteredFiles = useMemo(() => {
+    const q = fileSearchQuery.trim().toLowerCase();
+    if (!q) return combinedFiles;
+    return combinedFiles.filter((file) =>
+      file.original_name.toLowerCase().includes(q)
+    );
+  }, [combinedFiles, fileSearchQuery]);
 
   const storageUsedBytes = useMemo(() => {
     const combinedUsed = combinedFiles.reduce((acc, item) => acc + (item.size_bytes || 0), 0);
@@ -610,11 +630,29 @@ function LettingWorkApp() {
   return (
     <div id="top" className="relative min-h-screen flex flex-col text-slate-100">
       {/* Continuous subtle full-page vector background extracted from PDF (zero text/logos) */}
-      <div aria-hidden="true" className="fixed inset-0 -z-10 pointer-events-none bg-[#04070d]">
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-35"
-          style={{ backgroundImage: `url(${pdfBgSvg})` }}
-        />
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 -z-10 pointer-events-none overflow-hidden bg-[#04070d] lw-bg-layer"
+      >
+        <picture className="block w-full h-full">
+          <source
+            media="(min-resolution: 2dppx)"
+            type="image/svg+xml"
+            srcSet={`${pdfBgSvg} 2x, ${pdfBgSvg} 3x`}
+          />
+          <source
+            type="image/svg+xml"
+            srcSet={`${pdfBgSvg} 1x, ${pdfBgSvg} 2x`}
+          />
+          <img
+            src={pdfBgSvg}
+            alt=""
+            decoding="async"
+            fetchPriority="low"
+            draggable={false}
+            className="w-full h-full object-cover object-center opacity-35 select-none transform-gpu"
+          />
+        </picture>
         <div className="absolute inset-0 bg-[#04070d]/55" />
       </div>
 
@@ -787,7 +825,7 @@ function LettingWorkApp() {
 
             {/* 3. Tus Subidas Recientes / Mis Archivos */}
             <section id="recent-section" className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <h2 className="font-display text-xl sm:text-2xl font-bold text-white">
                     {t.recent_title}
@@ -805,23 +843,113 @@ function LettingWorkApp() {
                 )}
               </div>
 
-              {combinedFiles.length === 0 ? (
+              <StorageQuotaBar
+                usedBytes={storageUsedBytes}
+                limitBytes={activeStorageLimitBytes}
+                isAuthenticated={Boolean(activeUser)}
+                onUpgradeClick={() => {
+                  setAuthInitialTab('register');
+                  setAuthModalOpen(true);
+                }}
+                t={t}
+              />
+
+              <div className="relative mb-4">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
+                />
+                <input
+                  type="search"
+                  value={fileSearchQuery}
+                  onChange={(e) => setFileSearchQuery(e.target.value)}
+                  placeholder={t.recent_search_placeholder}
+                  aria-label={t.recent_search_placeholder}
+                  className="w-full rounded-xl bg-[#090f19]/80 border border-white/[0.08] focus:border-cyan-400/50 pl-10 pr-24 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none transition-colors"
+                />
+                {fileSearchQuery.trim().length > 0 && (
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 tabular-nums">
+                      {filteredFiles.length}/{combinedFiles.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFileSearchQuery('')}
+                      aria-label={t.recent_search_clear}
+                      title={t.recent_search_clear}
+                      className="p-1 rounded-md bg-white/[0.06] hover:bg-white/15 text-slate-300 hover:text-white cursor-pointer transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {(!authReady || cloudFilesLoading || serverFilesLoading) && combinedFiles.length === 0 ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  aria-label="Loading files"
+                  className="divide-y divide-white/[0.07] border border-white/[0.08] rounded-xl bg-[#090f19]/80 backdrop-blur-sm overflow-hidden"
+                >
+                  {[0, 1, 2].map((idx) => (
+                    <div
+                      key={idx}
+                      className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.05] shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div
+                            className={`h-3.5 rounded bg-white/[0.09] ${
+                              idx === 0 ? 'w-48 sm:w-72' : idx === 1 ? 'w-40 sm:w-56' : 'w-44 sm:w-64'
+                            }`}
+                          />
+                          <div className="h-2.5 w-28 sm:w-36 rounded bg-white/[0.05]" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <div className="h-8 w-20 rounded-lg bg-white/[0.06]" />
+                        <div className="h-8 w-8 rounded-lg bg-white/[0.05]" />
+                        <div className="h-8 w-8 rounded-lg bg-white/[0.05]" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : combinedFiles.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-white/15 bg-black/25 p-10 text-center text-sm text-slate-400">
                   {t.recent_empty}
                 </div>
+              ) : filteredFiles.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-white/15 bg-black/25 p-10 text-center text-sm text-slate-400 flex flex-col items-center gap-3">
+                  <span>{t.recent_search_empty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFileSearchQuery('')}
+                    className="px-3.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/12 border border-white/10 text-xs font-medium text-slate-200 hover:text-white cursor-pointer transition-colors"
+                  >
+                    {t.recent_search_clear}
+                  </button>
+                </div>
               ) : (
                 <div className="divide-y divide-white/[0.07] border border-white/[0.08] rounded-xl bg-[#090f19]/80 backdrop-blur-sm overflow-hidden">
-                  {combinedFiles.map((file) => {
+                  {filteredFiles.map((file) => {
                     const fullUrl = file.share_url.startsWith('http')
                       ? file.share_url
                       : `${window.location.origin}${file.share_url}`;
                     return (
                       <div
                         key={file.id}
-                        className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/[0.03] transition-colors"
+                        className="group relative px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all duration-200 ease-out hover:bg-white/[0.045]"
                       >
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-cyan-400 opacity-0 -translate-x-1 transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0"
+                        />
                         <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                          <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
+                          <div className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-cyan-400 transition-all duration-200 ease-out group-hover:bg-cyan-400/10 group-hover:border-cyan-400/25 group-hover:scale-[1.03] shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
                           <div className="min-w-0 flex-1">
                             {editingFileId === file.id ? (
                               <form
@@ -842,7 +970,7 @@ function LettingWorkApp() {
                                 <button
                                   type="submit"
                                   aria-label={t.rename_save}
-                                  className="p-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-950 cursor-pointer"
+                                  className="p-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-950 cursor-pointer transition-colors"
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
@@ -850,17 +978,17 @@ function LettingWorkApp() {
                                   type="button"
                                   onClick={() => setEditingFileId(null)}
                                   aria-label={t.btn_cancel}
-                                  className="p-1.5 rounded-md bg-white/10 hover:bg-white/15 text-slate-300 cursor-pointer"
+                                  className="p-1.5 rounded-md bg-white/10 hover:bg-white/15 text-slate-300 cursor-pointer transition-colors"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </form>
                             ) : (
                               <>
-                                <div className="font-medium text-sm text-white truncate">
+                                <div className="font-medium text-sm text-slate-100 truncate transition-colors duration-200 group-hover:text-white">
                                   {file.original_name}
                                 </div>
-                                <div className="text-xs text-slate-400 tabular-nums mt-0.5">
+                                <div className="text-xs text-slate-400 tabular-nums mt-0.5 transition-colors duration-200 group-hover:text-slate-300">
                                   {formatBytes(file.size_bytes)} · {new Date(file.timestamp).toLocaleDateString()}
                                 </div>
                               </>
@@ -872,7 +1000,7 @@ function LettingWorkApp() {
                           <button
                             type="button"
                             onClick={() => handleCopyText(fullUrl)}
-                            className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 text-xs font-medium text-white flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                            className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/12 border border-white/10 hover:border-white/20 text-xs font-medium text-white flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all duration-150"
                           >
                             <Copy className="w-3.5 h-3.5" />
                             <span>{t.btn_copy_short}</span>
@@ -886,7 +1014,7 @@ function LettingWorkApp() {
                               }}
                               aria-label={t.btn_rename}
                               title={t.btn_rename}
-                              className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white cursor-pointer"
+                              className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/12 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white cursor-pointer transition-all duration-150"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
@@ -899,7 +1027,7 @@ function LettingWorkApp() {
                             }}
                             aria-label={t.btn_open_page}
                             title={t.btn_open_page}
-                            className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white"
+                            className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/12 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white transition-all duration-150"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -908,7 +1036,7 @@ function LettingWorkApp() {
                               type="button"
                               onClick={() => handleDeleteFile(file)}
                               aria-label="Delete file"
-                              className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 cursor-pointer"
+                              className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 hover:border-red-400/40 text-red-400 cursor-pointer transition-all duration-150"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -917,6 +1045,26 @@ function LettingWorkApp() {
                       </div>
                     );
                   })}
+                  {(cloudFilesLoading || serverFilesLoading) && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      aria-label="Syncing cloud files"
+                      className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse bg-white/[0.015]"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-lg bg-white/[0.06] shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="h-3.5 w-44 sm:w-60 rounded bg-white/[0.08]" />
+                          <div className="h-2.5 w-28 rounded bg-white/[0.05]" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <div className="h-8 w-20 rounded-lg bg-white/[0.05]" />
+                        <div className="h-8 w-8 rounded-lg bg-white/[0.05]" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

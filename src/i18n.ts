@@ -132,6 +132,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: 'Límite de 10 GB alcanzado',
     quota_account_exceeded_desc: 'Tu cuenta ha alcanzado los 10 GB gratuitos. Elimina algún archivo antiguo en Mis Archivos para liberar espacio.',
     quota_usage_label: 'Uso proyectado',
+    recent_search_placeholder: 'Buscar archivos subidos por nombre...',
+    recent_search_empty: 'Ningún archivo coincide con tu búsqueda.',
+    recent_search_clear: 'Limpiar búsqueda',
+    storage_used_of: '{used} de {limit} GB usados',
   },
   en: {
     lang_name: 'English',
@@ -264,6 +268,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: '10 GB storage limit reached',
     quota_account_exceeded_desc: 'Your account has reached its 10 GB storage allowance. Remove an older file from My Files to free up space.',
     quota_usage_label: 'Projected usage',
+    recent_search_placeholder: 'Search uploaded files by name...',
+    recent_search_empty: 'No files match your search.',
+    recent_search_clear: 'Clear search',
+    storage_used_of: '{used} of {limit} GB used',
   },
   it: {
     lang_name: 'Italiano',
@@ -396,6 +404,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: 'Limite di 10 GB raggiunto',
     quota_account_exceeded_desc: 'Il tuo account ha raggiunto i 10 GB. Elimina un file vecchio da I Miei File per liberare spazio.',
     quota_usage_label: 'Utilizzo previsto',
+    recent_search_placeholder: 'Cerca file caricati per nome...',
+    recent_search_empty: 'Nessun file corrisponde alla ricerca.',
+    recent_search_clear: 'Cancella ricerca',
+    storage_used_of: '{used} di {limit} GB usati',
   },
   de: {
     lang_name: 'Deutsch',
@@ -528,6 +540,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: '10-GB-Speicherlimit erreicht',
     quota_account_exceeded_desc: 'Dein Konto hat das 10-GB-Limit erreicht. Lösche eine ältere Datei unter Meine Dateien, um Platz zu schaffen.',
     quota_usage_label: 'Geplante Belegung',
+    recent_search_placeholder: 'Hochgeladene Dateien nach Namen suchen...',
+    recent_search_empty: 'Keine Dateien entsprechen deiner Suche.',
+    recent_search_clear: 'Suche löschen',
+    storage_used_of: '{used} von {limit} GB verwendet',
   },
   fr: {
     lang_name: 'Français',
@@ -660,6 +676,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: 'Limite de 10 Go atteinte',
     quota_account_exceeded_desc: 'Votre compte a atteint les 10 Go. Supprimez un ancien fichier dans Mes Fichiers pour libérer de l’espace.',
     quota_usage_label: 'Utilisation prévue',
+    recent_search_placeholder: 'Rechercher des fichiers par nom...',
+    recent_search_empty: 'Aucun fichier ne correspond à votre recherche.',
+    recent_search_clear: 'Effacer la recherche',
+    storage_used_of: '{used} sur {limit} Go utilisés',
   },
   pt: {
     lang_name: 'Português',
@@ -792,6 +812,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: 'Limite de 10 GB atingido',
     quota_account_exceeded_desc: 'Sua conta atingiu o limite de 10 GB. Remova um arquivo antigo em Meus Arquivos para liberar espaço.',
     quota_usage_label: 'Uso projetado',
+    recent_search_placeholder: 'Pesquisar arquivos enviados por nome...',
+    recent_search_empty: 'Nenhum arquivo corresponde à sua pesquisa.',
+    recent_search_clear: 'Limpar pesquisa',
+    storage_used_of: '{used} de {limit} GB usados',
   },
   'nl-be': {
     lang_name: 'Nederlands (België)',
@@ -924,6 +948,10 @@ export const I18N: Record<LangCode, Record<string, string>> = {
     quota_account_exceeded_title: 'Limiet van 10 GB bereikt',
     quota_account_exceeded_desc: 'Uw account heeft de limiet van 10 GB bereikt. Verwijder een ouder bestand in Mijn Bestanden om ruimte vrij te maken.',
     quota_usage_label: 'Verwacht gebruik',
+    recent_search_placeholder: 'Geüploade bestanden zoeken op naam...',
+    recent_search_empty: 'Geen bestanden komen overeen met uw zoekopdracht.',
+    recent_search_clear: 'Zoekopdracht wissen',
+    storage_used_of: '{used} van {limit} GB gebruikt',
   },
 };
 
