@@ -233,29 +233,28 @@ export function UploadModal({
 
       const initData = await initRes.json().catch(() => ({}));
       if (!initRes.ok) {
+        const err = new Error(initData.error || `Error (${initRes.status})`) as Error & {
+          isQuota?: boolean;
+          isFatal?: boolean;
+        };
         if (
           initRes.status === 413 &&
           (initData.code === 'GUEST_QUOTA_EXCEEDED' || initData.code === 'ACCOUNT_QUOTA_EXCEEDED')
         ) {
-          const quotaErr = new Error(initData.error || t.quota_guest_exceeded_title) as Error & {
-            isQuota?: boolean;
-          };
-          quotaErr.isQuota = true;
-          throw quotaErr;
+          err.isQuota = true;
         }
-        throw new Error(initData.error || `Error (${initRes.status})`);
+        if (initRes.status === 400 || initRes.status === 413) {
+          err.isFatal = true;
+        }
+        throw err;
       }
       if (initData.mode === 'direct' && initData.signedUrl && initData.completeToken) {
         directInit = initData;
       }
     } catch (err) {
-      if ((err as Error & { isQuota?: boolean })?.isQuota || (err as Error)?.message) {
-        if (directInit === null && (err as Error).message.includes('50 MB')) {
-          throw err;
-        }
-        if ((err as Error & { isQuota?: boolean }).isQuota) {
-          throw err;
-        }
+      const typedErr = err as Error & { isQuota?: boolean; isFatal?: boolean };
+      if (typedErr?.isQuota || typedErr?.isFatal) {
+        throw typedErr;
       }
     }
 

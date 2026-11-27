@@ -25,6 +25,17 @@ const GUEST_COOKIE_NAME = 'lw_guest';
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
 const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const SUPABASE_STORAGE_BUCKET = (process.env.SUPABASE_STORAGE_BUCKET || 'lettingwork-files').trim();
+const B2_HOST = (process.env.B2_ENDPOINT || '')
+  .trim()
+  .replace(/^https?:\/\//i, '')
+  .replace(/\/+$/, '');
+const B2_BUCKET = (process.env.B2_BUCKET || '').trim();
+const B2_KEY_ID = (process.env.B2_KEY_ID || '').trim();
+const B2_APPLICATION_KEY = (process.env.B2_APPLICATION_KEY || '').trim();
+const B2_REGION =
+  (process.env.B2_REGION || '').trim() ||
+  B2_HOST.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ||
+  'us-west-004';
 
 let FIREBASE_PROJECT_ID = '';
 try {
@@ -588,9 +599,172 @@ async function deleteFromSupabase(storedName: string): Promise<void> {
   }
 }
 
+function isB2Enabled(): boolean {
+  return Boolean(B2_HOST && B2_BUCKET && B2_KEY_ID && B2_APPLICATION_KEY);
+}
+
+function encodeRfc3986(str: string): string {
+  return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function sha256Hex(data: string | Buffer): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function hmacSha256(key: string | Buffer, data: string): Buffer {
+  return crypto.createHmac('sha256', key).update(data).digest();
+}
+
+function getB2SigningKey(dateStamp: string): Buffer {
+  const kDate = hmacSha256(`AWS4${B2_APPLICATION_KEY}`, dateStamp);
+  const kRegion = hmacSha256(kDate, B2_REGION);
+  const kService = hmacSha256(kRegion, 's3');
+  return hmacSha256(kService, 'aws4_request');
+}
+
+function generateB2PresignedUrl(
+  method: 'GET' | 'PUT',
+  objectKey: string,
+  expiresInSeconds: number,
+  extraQuery?: Record<string, string>
+): string {
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${B2_REGION}/s3/aws4_request`;
+
+  const encodedBucket = encodeRfc3986(B2_BUCKET);
+  const encodedKey = objectKey.split('/').map(encodeRfc3986).join('/');
+  const canonicalUri = `/${encodedBucket}/${encodedKey}`;
+
+  const queryParams: Array<[string, string]> = [
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Credential', `${B2_KEY_ID}/${credentialScope}`],
+    ['X-Amz-Date', amzDate],
+    ['X-Amz-Expires', String(expiresInSeconds)],
+    ['X-Amz-SignedHeaders', 'host'],
+  ];
+  if (extraQuery) {
+    for (const [k, v] of Object.entries(extraQuery)) {
+      queryParams.push([k, v]);
+    }
+  }
+
+  const canonicalQueryString = queryParams
+    .map(([k, v]) => [encodeRfc3986(k), encodeRfc3986(v)] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&');
+
+  const canonicalHeaders = `host:${B2_HOST}\n`;
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\nhost\nUNSIGNED-PAYLOAD`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${sha256Hex(canonicalRequest)}`;
+  const signature = hmacSha256(getB2SigningKey(dateStamp), stringToSign).toString('hex');
+
+  return `https://${B2_HOST}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
+async function signedB2Request(
+  method: 'GET' | 'PUT' | 'DELETE',
+  objectKey: string | null,
+  rawQuery = '',
+  body?: string | Buffer,
+  contentType?: string
+): Promise<globalThis.Response> {
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${B2_REGION}/s3/aws4_request`;
+
+  const encodedBucket = encodeRfc3986(B2_BUCKET);
+  const canonicalUri = objectKey
+    ? `/${encodedBucket}/${objectKey.split('/').map(encodeRfc3986).join('/')}`
+    : `/${encodedBucket}/`;
+
+  const payloadHash = body !== undefined ? sha256Hex(body) : sha256Hex('');
+  const headersToSign: Record<string, string> = {
+    host: B2_HOST,
+    'x-amz-content-sha256': payloadHash,
+    'x-amz-date': amzDate,
+  };
+  if (body !== undefined) {
+    headersToSign['content-md5'] = crypto.createHash('md5').update(body).digest('base64');
+  }
+  if (contentType) {
+    headersToSign['content-type'] = contentType;
+  }
+
+  const sortedHeaderKeys = Object.keys(headersToSign).sort();
+  const canonicalHeaders = sortedHeaderKeys.map((k) => `${k}:${headersToSign[k]}\n`).join('');
+  const signedHeaders = sortedHeaderKeys.join(';');
+
+  const canonicalQuery = rawQuery
+    ? rawQuery
+        .split('&')
+        .map((pair) => {
+          const [k, v = ''] = pair.split('=');
+          return `${encodeRfc3986(decodeURIComponent(k))}=${encodeRfc3986(decodeURIComponent(v))}`;
+        })
+        .sort()
+        .join('&')
+    : '';
+
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuery}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${sha256Hex(canonicalRequest)}`;
+  const signature = hmacSha256(getB2SigningKey(dateStamp), stringToSign).toString('hex');
+
+  const authorization = `AWS4-HMAC-SHA256 Credential=${B2_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const url = `https://${B2_HOST}${canonicalUri}${rawQuery ? `?${rawQuery}` : ''}`;
+
+  const fetchHeaders: Record<string, string> = {
+    Authorization: authorization,
+    'x-amz-date': amzDate,
+    'x-amz-content-sha256': payloadHash,
+  };
+  if (headersToSign['content-md5']) fetchHeaders['Content-MD5'] = headersToSign['content-md5'];
+  if (contentType) fetchHeaders['Content-Type'] = contentType;
+
+  return fetch(url, {
+    method,
+    headers: fetchHeaders,
+    body: body as BodyInit | undefined,
+  });
+}
+
+let b2CorsEnsured = false;
+
+async function ensureB2BucketCors(): Promise<void> {
+  if (!isB2Enabled() || b2CorsEnsured) return;
+  const corsXml = `<CORSConfiguration><CORSRule><ID>LettingWorkBrowserUploads</ID><AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>`;
+  try {
+    const res = await signedB2Request('PUT', null, 'cors=', corsXml, 'application/xml');
+    if (res.ok) {
+      b2CorsEnsured = true;
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.warn(`B2 PutBucketCors note (${res.status}): ${errText}`);
+    }
+  } catch (err) {
+    console.warn('Could not auto-configure B2 CORS:', err);
+  }
+}
+
+async function deleteFromB2(storedName: string): Promise<void> {
+  if (!isB2Enabled()) return;
+  try {
+    await signedB2Request('DELETE', storedName);
+  } catch {
+    // Ignore remote cleanup errors
+  }
+}
+
 async function removeStoredFile(row: Pick<FileRow, 'id' | 'stored_name' | 'storage_provider'>): Promise<void> {
   db.prepare('DELETE FROM collection_files WHERE file_id = ?').run(row.id);
   db.prepare('DELETE FROM files WHERE id = ?').run(row.id);
+  if (row.storage_provider === 'b2') {
+    await deleteFromB2(row.stored_name);
+    return;
+  }
   if (row.storage_provider === 'supabase') {
     await deleteFromSupabase(row.stored_name);
     return;
@@ -805,7 +979,7 @@ export async function createApp() {
         ok: true,
         status: 'operational',
         db: 'connected',
-        storage: isSupabaseStorageEnabled() ? 'supabase' : 'local',
+        storage: isB2Enabled() ? 'b2' : isSupabaseStorageEnabled() ? 'supabase' : 'local',
       });
     } catch {
       res.status(500).json({ ok: false, status: 'degraded' });
@@ -1253,6 +1427,25 @@ export async function createApp() {
     const encodedName = encodeURIComponent(row.original_name);
     const asciiName = row.original_name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
 
+    if (row.storage_provider === 'b2' && isB2Enabled()) {
+      try {
+        const signedDownloadUrl = generateB2PresignedUrl('GET', row.stored_name, 300, {
+          'response-content-disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
+        });
+        db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(fileId);
+        if (IS_VERCEL) {
+          await syncDbToSupabase();
+        } else {
+          scheduleDbSync();
+        }
+        res.redirect(302, signedDownloadUrl);
+        return;
+      } catch {
+        if (!res.headersSent) res.status(500).send('Backblaze B2 read error');
+        return;
+      }
+    }
+
     if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
       try {
         if (IS_VERCEL) {
@@ -1355,6 +1548,20 @@ export async function createApp() {
     const asciiName = row.original_name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
     const range = req.header('Range');
 
+    if (row.storage_provider === 'b2' && isB2Enabled()) {
+      try {
+        const signedViewUrl = generateB2PresignedUrl('GET', row.stored_name, 300, {
+          'response-content-type': contentType,
+          'response-content-disposition': `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
+        });
+        res.redirect(302, signedViewUrl);
+        return;
+      } catch {
+        if (!res.headersSent) res.status(500).send('Backblaze B2 read error');
+        return;
+      }
+    }
+
     if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
       try {
         if (IS_VERCEL) {
@@ -1452,7 +1659,10 @@ export async function createApp() {
       return;
     }
 
-    if (!isSupabaseStorageEnabled()) {
+    const useB2 = isB2Enabled();
+    const useSupabase = !useB2 && isSupabaseStorageEnabled();
+
+    if (!useB2 && !useSupabase) {
       res.json({ success: true, mode: 'proxy' });
       return;
     }
@@ -1474,10 +1684,13 @@ export async function createApp() {
       return;
     }
 
-    if (sizeBytes > SUPABASE_FREE_MAX_FILE_BYTES) {
+    const maxAllowedBytes = useB2 ? MAX_UPLOAD_BYTES : SUPABASE_FREE_MAX_FILE_BYTES;
+    if (sizeBytes > maxAllowedBytes) {
       res.status(413).json({
         success: false,
-        error: 'El límite máximo por archivo en el plan gratuito en la nube es de 50 MB.',
+        error: useB2
+          ? 'El límite máximo por archivo es de 500 MB.'
+          : 'El límite máximo por archivo en el plan gratuito en la nube es de 50 MB.',
       });
       return;
     }
@@ -1508,7 +1721,15 @@ export async function createApp() {
     const storedName = `${crypto.randomUUID()}${ext}`;
 
     try {
-      const signedUrl = await createSupabaseSignedUploadUrl(storedName);
+      let signedUrl: string;
+      const storageProvider = useB2 ? 'b2' : 'supabase';
+      if (useB2) {
+        await ensureB2BucketCors();
+        signedUrl = generateB2PresignedUrl('PUT', storedName, 900);
+      } else {
+        signedUrl = await createSupabaseSignedUploadUrl(storedName);
+      }
+
       const completeToken = signUploadCompleteToken({
         storedName,
         originalName,
@@ -1519,6 +1740,7 @@ export async function createApp() {
         passwordHash: passwordCreds ? passwordCreds.hash : null,
         passwordSalt: passwordCreds ? passwordCreds.salt : null,
         expiresAt,
+        storageProvider,
         exp: Math.floor(Date.now() / 1000) + 3600,
       });
 
@@ -1528,6 +1750,7 @@ export async function createApp() {
         signedUrl,
         completeToken,
         mimeType,
+        storageProvider,
       });
     } catch (err) {
       console.error('upload-init failed:', err);
@@ -1556,6 +1779,7 @@ export async function createApp() {
       passwordHash: string | null;
       passwordSalt: string | null;
       expiresAt: string | null;
+      storageProvider?: string;
     }>(token);
 
     if (!payload) {
@@ -1566,10 +1790,11 @@ export async function createApp() {
     await refreshDbIfServerlessMissing(false);
     const fileId = generateFileId();
     const deleteToken = crypto.randomBytes(24).toString('hex');
+    const storageProvider = payload.storageProvider === 'b2' ? 'b2' : 'supabase';
 
     db.prepare(
       `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id, password_hash, password_salt, expires_at, storage_provider)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'supabase')`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       fileId,
       payload.originalName,
@@ -1581,7 +1806,8 @@ export async function createApp() {
       payload.guestId,
       payload.passwordHash,
       payload.passwordSalt,
-      payload.expiresAt
+      payload.expiresAt,
+      storageProvider
     );
 
     await syncDbToSupabase();
@@ -1597,7 +1823,7 @@ export async function createApp() {
       download_count: 0,
       has_password: Boolean(payload.passwordHash),
       expires_at: payload.expiresAt,
-      storage_provider: 'supabase',
+      storage_provider: storageProvider,
     });
   });
 
