@@ -1,0 +1,15 @@
+node_modules
+dist
+dev-dist
+uploads
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+.git
+android
+*.apk
+android-signing/*.jks
+android-signing/*.keystore
+android-signing/keystore.properties

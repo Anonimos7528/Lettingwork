@@ -8,13 +8,15 @@ import { Readable } from 'node:stream';
 import { DatabaseSync } from 'node:sqlite';
 import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 
 const BASE_DIR = path.resolve(process.cwd());
-const UPLOADS_DIR = path.resolve(BASE_DIR, 'uploads');
-const DB_PATH = path.resolve(BASE_DIR, 'lettingwork.db');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const WRITABLE_BASE_DIR = IS_VERCEL ? path.resolve('/tmp', 'lettingwork') : BASE_DIR;
+const UPLOADS_DIR = path.resolve(WRITABLE_BASE_DIR, 'uploads');
+const DB_PATH = path.resolve(WRITABLE_BASE_DIR, 'lettingwork.db');
 const PORT = Number(process.env.PORT || 3000);
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per upload
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per upload (local/node)
+const SUPABASE_FREE_MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB max single file on Supabase Free
 const GUEST_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB free guest tier
 const REGISTERED_QUOTA_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB registered tier
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -40,9 +42,9 @@ const DB_REMOTE_KEY = '_system/lettingwork.db';
 let db!: DatabaseSync;
 let FILE_ACCESS_SECRET = '';
 
-async function restoreDbFromSupabase(): Promise<void> {
-  if (!isSupabaseStorageEnabled()) return;
-  if (fs.existsSync(DB_PATH) && fs.statSync(DB_PATH).size > 0) return;
+async function restoreDbFromSupabase(force = false): Promise<boolean> {
+  if (!isSupabaseStorageEnabled()) return false;
+  if (!force && fs.existsSync(DB_PATH) && fs.statSync(DB_PATH).size > 0) return false;
 
   try {
     await ensureSupabaseBucket();
@@ -53,16 +55,36 @@ async function restoreDbFromSupabase(): Promise<void> {
         apikey: SUPABASE_SERVICE_ROLE_KEY,
       },
     });
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > 0) {
-      const tmpPath = `${DB_PATH}.restore`;
+      const tmpPath = `${DB_PATH}.restore.${process.pid}`;
       fs.writeFileSync(tmpPath, buf);
       fs.renameSync(tmpPath, DB_PATH);
       console.log(`Restored SQLite database from Supabase (${buf.length} bytes).`);
+      return true;
     }
   } catch (err) {
     console.warn('Could not restore SQLite DB from Supabase (starting fresh if none):', err);
+  }
+  return false;
+}
+
+let lastServerlessRefreshAt = 0;
+
+async function refreshDbIfServerlessMissing(force = false): Promise<void> {
+  if (!IS_VERCEL || !isSupabaseStorageEnabled()) return;
+  const now = Date.now();
+  if (!force && now - lastServerlessRefreshAt < 4000) return;
+  lastServerlessRefreshAt = now;
+  const restored = await restoreDbFromSupabase(true);
+  if (restored) {
+    try {
+      db?.close();
+    } catch {
+      // Ignore close error
+    }
+    db = new DatabaseSync(DB_PATH);
   }
 }
 
@@ -79,7 +101,7 @@ async function syncDbToSupabase(): Promise<void> {
   }
 
   dbSyncInFlight = (async () => {
-    const snapshotPath = path.resolve(BASE_DIR, `lettingwork.db.snapshot.${process.pid}`);
+    const snapshotPath = path.resolve(WRITABLE_BASE_DIR, `lettingwork.db.snapshot.${process.pid}`);
     try {
       await ensureSupabaseBucket();
       if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
@@ -693,7 +715,84 @@ Reglas de respuesta:
 - Sé claro, natural, directo y conciso (2 a 4 frases o pasos breves).
 - No inventes funciones que no existen ni pidas claves API o contraseñas al usuario.`;
 
-async function startServer() {
+async function createSupabaseSignedUploadUrl(storedName: string): Promise<string> {
+  await ensureSupabaseBucket();
+  const signEndpoint = `${SUPABASE_URL}/storage/v1/object/upload/sign/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(storedName)}`;
+  const res = await fetch(signEndpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ upsert: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase signed upload failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as { url?: string };
+  if (!data.url) {
+    throw new Error('Supabase did not return a signed upload URL');
+  }
+  return data.url.startsWith('http') ? data.url : `${SUPABASE_URL}/storage/v1${data.url}`;
+}
+
+async function createSupabaseSignedDownloadUrl(
+  storedName: string,
+  downloadFilename?: string
+): Promise<string> {
+  await ensureSupabaseBucket();
+  const signEndpoint = `${SUPABASE_URL}/storage/v1/object/sign/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(storedName)}`;
+  const res = await fetch(signEndpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ expiresIn: 300 }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase signed download failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as { signedURL?: string };
+  if (!data.signedURL) {
+    throw new Error('Supabase did not return a signed download URL');
+  }
+  const base = data.signedURL.startsWith('http')
+    ? data.signedURL
+    : `${SUPABASE_URL}/storage/v1${data.signedURL}`;
+  if (!downloadFilename) return base;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}download=${encodeURIComponent(downloadFilename)}`;
+}
+
+function signUploadCompleteToken(payload: Record<string, unknown>): string {
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', FILE_ACCESS_SECRET).update(encoded).digest('hex');
+  return `${encoded}.${sig}`;
+}
+
+function verifyUploadCompleteToken<T>(token: string): T | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [encoded, sig] = parts;
+  const expected = crypto.createHmac('sha256', FILE_ACCESS_SECRET).update(encoded).digest('hex');
+  if (!timingSafeMatch(sig, expected)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as T & {
+      exp?: number;
+    };
+    if (!parsed.exp || parsed.exp <= Math.floor(Date.now() / 1000)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function createApp() {
   await initDatabase();
   const app = express();
   app.disable('x-powered-by');
@@ -1038,12 +1137,22 @@ async function startServer() {
       return;
     }
 
-    const row = db
+    let row = db
       .prepare(
         `SELECT id, original_name, stored_name, size_bytes, mime_type, upload_time, download_count, password_hash, expires_at, storage_provider
          FROM files WHERE id = ?`
       )
       .get(fileId) as FileRow | undefined;
+
+    if (!row && IS_VERCEL) {
+      await refreshDbIfServerlessMissing(true);
+      row = db
+        .prepare(
+          `SELECT id, original_name, stored_name, size_bytes, mime_type, upload_time, download_count, password_hash, expires_at, storage_provider
+           FROM files WHERE id = ?`
+        )
+        .get(fileId) as FileRow | undefined;
+    }
 
     if (!row) {
       res.status(404).json({ success: false, error: 'File not found or deleted' });
@@ -1120,7 +1229,11 @@ async function startServer() {
       return;
     }
 
-    const row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    let row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    if (!row && IS_VERCEL) {
+      await refreshDbIfServerlessMissing(true);
+      row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    }
     if (!row) {
       res.status(404).send('File not found');
       return;
@@ -1142,6 +1255,16 @@ async function startServer() {
 
     if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
       try {
+        if (IS_VERCEL) {
+          const signedDownloadUrl = await createSupabaseSignedDownloadUrl(
+            row.stored_name,
+            row.original_name
+          );
+          db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(fileId);
+          await syncDbToSupabase();
+          res.redirect(302, signedDownloadUrl);
+          return;
+        }
         const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(row.stored_name)}`;
         const upstream = await fetch(objectUrl, {
           headers: {
@@ -1154,6 +1277,7 @@ async function startServer() {
           return;
         }
         db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(fileId);
+        scheduleDbSync();
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         const len = upstream.headers.get('content-length');
@@ -1203,7 +1327,11 @@ async function startServer() {
       return;
     }
 
-    const row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    let row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    if (!row && IS_VERCEL) {
+      await refreshDbIfServerlessMissing(true);
+      row = db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) as FileRow | undefined;
+    }
     if (!row) {
       res.status(404).send('File not found');
       return;
@@ -1229,6 +1357,14 @@ async function startServer() {
 
     if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
       try {
+        if (IS_VERCEL) {
+          const signedViewUrl = await createSupabaseSignedDownloadUrl(
+            row.stored_name,
+            disposition === 'attachment' ? row.original_name : undefined
+          );
+          res.redirect(302, signedViewUrl);
+          return;
+        }
         const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(row.stored_name)}`;
         const upstreamHeaders: Record<string, string> = {
           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -1308,6 +1444,161 @@ async function startServer() {
       if (!res.headersSent) res.status(500).end('Read error');
     });
     stream.pipe(res);
+  });
+
+  app.post('/api/upload-init', express.json(), async (req: Request, res: Response) => {
+    if (!isSameOriginOrCustomHeader(req)) {
+      res.status(403).json({ success: false, error: 'Invalid request origin' });
+      return;
+    }
+
+    if (!isSupabaseStorageEnabled()) {
+      res.json({ success: true, mode: 'proxy' });
+      return;
+    }
+
+    await refreshDbIfServerlessMissing(false);
+    const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const ownerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
+    const guestId = ownerUserId ? null : getOrCreateGuestId(req, res);
+    const quotaLimit = ownerUserId ? REGISTERED_QUOTA_BYTES : GUEST_QUOTA_BYTES;
+    const currentUsedBytes = ownerUserId
+      ? getUserStorageUsage(ownerUserId)
+      : getGuestStorageUsage(guestId!);
+
+    const originalName = sanitizeFilename(String(req.body?.original_name || 'archivo'));
+    const sizeBytes = Number(req.body?.size_bytes || 0);
+    if (!Number.isFinite(sizeBytes) || sizeBytes < 0) {
+      res.status(400).json({ success: false, error: 'Invalid file size' });
+      return;
+    }
+
+    if (sizeBytes > SUPABASE_FREE_MAX_FILE_BYTES) {
+      res.status(413).json({
+        success: false,
+        error: 'El límite máximo por archivo en el plan gratuito en la nube es de 50 MB.',
+      });
+      return;
+    }
+
+    if (currentUsedBytes + sizeBytes > quotaLimit) {
+      res.status(413).json({
+        success: false,
+        code: ownerUserId ? 'ACCOUNT_QUOTA_EXCEEDED' : 'GUEST_QUOTA_EXCEEDED',
+        limit_bytes: quotaLimit,
+        used_bytes: currentUsedBytes,
+        error: ownerUserId
+          ? '10 GB storage limit reached.'
+          : '5 GB free guest limit reached. Sign up free to unlock 10 GB.',
+      });
+      return;
+    }
+
+    const rawPassword = typeof req.body?.password === 'string' ? req.body.password.slice(0, 128) : '';
+    const passwordCreds = rawPassword ? hashPassword(rawPassword) : null;
+    const expiresAt = computeExpiresAt(
+      typeof req.body?.expires_in === 'string' ? req.body.expires_in : undefined
+    );
+    const mimeType = guessMimeType(
+      originalName,
+      typeof req.body?.mime_type === 'string' ? req.body.mime_type : 'application/octet-stream'
+    );
+    const ext = path.extname(originalName).slice(0, 16);
+    const storedName = `${crypto.randomUUID()}${ext}`;
+
+    try {
+      const signedUrl = await createSupabaseSignedUploadUrl(storedName);
+      const completeToken = signUploadCompleteToken({
+        storedName,
+        originalName,
+        sizeBytes,
+        mimeType,
+        ownerUserId,
+        guestId,
+        passwordHash: passwordCreds ? passwordCreds.hash : null,
+        passwordSalt: passwordCreds ? passwordCreds.salt : null,
+        expiresAt,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      res.json({
+        success: true,
+        mode: 'direct',
+        signedUrl,
+        completeToken,
+        mimeType,
+      });
+    } catch (err) {
+      console.error('upload-init failed:', err);
+      if (IS_VERCEL) {
+        res.status(502).json({ success: false, error: 'Could not initialize cloud upload' });
+        return;
+      }
+      res.json({ success: true, mode: 'proxy' });
+    }
+  });
+
+  app.post('/api/upload-complete', express.json(), async (req: Request, res: Response) => {
+    if (!isSameOriginOrCustomHeader(req)) {
+      res.status(403).json({ success: false, error: 'Invalid request origin' });
+      return;
+    }
+
+    const token = String(req.body?.completeToken || '').trim();
+    const payload = verifyUploadCompleteToken<{
+      storedName: string;
+      originalName: string;
+      sizeBytes: number;
+      mimeType: string;
+      ownerUserId: string | null;
+      guestId: string | null;
+      passwordHash: string | null;
+      passwordSalt: string | null;
+      expiresAt: string | null;
+    }>(token);
+
+    if (!payload) {
+      res.status(400).json({ success: false, error: 'Invalid or expired upload token' });
+      return;
+    }
+
+    await refreshDbIfServerlessMissing(false);
+    const fileId = generateFileId();
+    const deleteToken = crypto.randomBytes(24).toString('hex');
+
+    db.prepare(
+      `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id, password_hash, password_salt, expires_at, storage_provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'supabase')`
+    ).run(
+      fileId,
+      payload.originalName,
+      payload.storedName,
+      payload.sizeBytes,
+      payload.mimeType,
+      deleteToken,
+      payload.ownerUserId,
+      payload.guestId,
+      payload.passwordHash,
+      payload.passwordSalt,
+      payload.expiresAt
+    );
+
+    await syncDbToSupabase();
+
+    res.json({
+      success: true,
+      id: fileId,
+      original_name: payload.originalName,
+      size_bytes: payload.sizeBytes,
+      mime_type: payload.mimeType,
+      share_url: `/f/${fileId}`,
+      delete_token: deleteToken,
+      download_count: 0,
+      has_password: Boolean(payload.passwordHash),
+      expires_at: payload.expiresAt,
+      storage_provider: 'supabase',
+    });
   });
 
   app.post('/api/upload', async (req: Request, res: Response) => {
@@ -1891,13 +2182,14 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !IS_VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!IS_VERCEL) {
     const distDir = path.resolve(BASE_DIR, 'dist');
     app.use(express.static(distDir));
     app.get('*', (_req: Request, res: Response) => {
@@ -1905,23 +2197,29 @@ async function startServer() {
     });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`LettingWork server listening on http://0.0.0.0:${PORT}`);
-  });
-
-  const gracefulShutdown = async () => {
-    try {
-      await syncDbToSupabase();
-    } finally {
-      server.close(() => process.exit(0));
-    }
-  };
-
-  process.on('SIGTERM', () => void gracefulShutdown());
-  process.on('SIGINT', () => void gracefulShutdown());
+  return app;
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start LettingWork server:', err);
-  process.exit(1);
-});
+if (!IS_VERCEL) {
+  createApp()
+    .then((app) => {
+      const server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`LettingWork server listening on http://0.0.0.0:${PORT}`);
+      });
+
+      const gracefulShutdown = async () => {
+        try {
+          await syncDbToSupabase();
+        } finally {
+          server.close(() => process.exit(0));
+        }
+      };
+
+      process.on('SIGTERM', () => void gracefulShutdown());
+      process.on('SIGINT', () => void gracefulShutdown());
+    })
+    .catch((err) => {
+      console.error('Failed to start LettingWork server:', err);
+      process.exit(1);
+    });
+}

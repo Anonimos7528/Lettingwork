@@ -178,43 +178,154 @@ export function UploadModal({
     setStage('ready');
   };
 
-  const uploadSingleFileXhr = (
+  const uploadSingleFileXhr = async (
     item: QueuedFileItem,
     idToken: string | null,
     completedBytesBefore: number,
     batchTotalBytes: number,
     batchStartTime: number
   ): Promise<UploadedFileRecord> => {
-    return new Promise((resolve, reject) => {
-      const cleanName = item.customName.trim() || item.file.name;
-      setCurrentFileName(cleanName);
-      setCurrentFileSize(item.file.size);
+    const cleanName = item.customName.trim() || item.file.name;
+    setCurrentFileName(cleanName);
+    setCurrentFileSize(item.file.size);
 
+    const updateProgress = (loadedBytes: number) => {
+      const totalLoaded = completedBytesBefore + loadedBytes;
+      const pct = batchTotalBytes > 0 ? Math.min(100, Math.round((totalLoaded / batchTotalBytes) * 100)) : 0;
+      setOverallPercent(pct);
+
+      const elapsed = (Date.now() - batchStartTime) / 1000;
+      const speed = elapsed > 0.25 ? totalLoaded / elapsed : 0;
+      const remainingBytes = Math.max(0, batchTotalBytes - totalLoaded);
+      const etaSecs = speed > 0 ? remainingBytes / speed : 0;
+
+      setTransferredText(
+        `${formatBytes(totalLoaded)} / ${formatBytes(batchTotalBytes)} (${formatBytes(speed)}/s)`
+      );
+      if (speed > 0 && remainingBytes > 0) {
+        setEtaText(
+          (t.upload_eta_remaining || '{time} left').replace('{time}', formatDuration(etaSecs))
+        );
+      } else {
+        setEtaText('');
+      }
+    };
+
+    // Check whether direct Supabase Storage signed upload is enabled (required on Vercel for >4.5 MB files)
+    let directInit: { signedUrl?: string; completeToken?: string; mimeType?: string } | null = null;
+    try {
+      const initRes = await fetch('/api/upload-init', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'LettingWork',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({
+          original_name: cleanName,
+          size_bytes: item.file.size,
+          mime_type: item.file.type || 'application/octet-stream',
+          password: password.trim() || undefined,
+          expires_in: expiresPreset !== 'never' ? expiresPreset : undefined,
+        }),
+      });
+
+      const initData = await initRes.json().catch(() => ({}));
+      if (!initRes.ok) {
+        if (
+          initRes.status === 413 &&
+          (initData.code === 'GUEST_QUOTA_EXCEEDED' || initData.code === 'ACCOUNT_QUOTA_EXCEEDED')
+        ) {
+          const quotaErr = new Error(initData.error || t.quota_guest_exceeded_title) as Error & {
+            isQuota?: boolean;
+          };
+          quotaErr.isQuota = true;
+          throw quotaErr;
+        }
+        throw new Error(initData.error || `Error (${initRes.status})`);
+      }
+      if (initData.mode === 'direct' && initData.signedUrl && initData.completeToken) {
+        directInit = initData;
+      }
+    } catch (err) {
+      if ((err as Error & { isQuota?: boolean })?.isQuota || (err as Error)?.message) {
+        if (directInit === null && (err as Error).message.includes('50 MB')) {
+          throw err;
+        }
+        if ((err as Error & { isQuota?: boolean }).isQuota) {
+          throw err;
+        }
+      }
+    }
+
+    if (directInit?.signedUrl && directInit.completeToken) {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) updateProgress(e.loaded);
+        });
+
+        xhr.addEventListener('load', () => {
+          xhrRef.current = null;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Cloud storage upload error (${xhr.status})`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          xhrRef.current = null;
+          reject(new Error('Network error during cloud upload'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          xhrRef.current = null;
+          reject(new Error('ABORTED'));
+        });
+
+        xhr.open('PUT', directInit.signedUrl!);
+        xhr.setRequestHeader('Content-Type', directInit.mimeType || item.file.type || 'application/octet-stream');
+        xhr.send(item.file);
+      });
+
+      const completeRes = await fetch('/api/upload-complete', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'LettingWork',
+        },
+        body: JSON.stringify({ completeToken: directInit.completeToken }),
+      });
+      const completeData = await completeRes.json();
+      if (!completeRes.ok || !completeData.success) {
+        throw new Error(completeData.error || 'Could not finalize upload');
+      }
+      return {
+        id: completeData.id,
+        original_name: completeData.original_name,
+        size_bytes: completeData.size_bytes,
+        mime_type: completeData.mime_type || 'application/octet-stream',
+        share_url: completeData.share_url,
+        delete_token: completeData.delete_token,
+        timestamp: new Date().toISOString(),
+        download_count: 0,
+        has_password: Boolean(completeData.has_password),
+        expires_at: completeData.expires_at || null,
+      };
+    }
+
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
       xhr.withCredentials = true;
 
       xhr.upload.addEventListener('progress', (e) => {
-        if (!e.lengthComputable) return;
-        const totalLoaded = completedBytesBefore + e.loaded;
-        const pct = batchTotalBytes > 0 ? Math.min(100, Math.round((totalLoaded / batchTotalBytes) * 100)) : 0;
-        setOverallPercent(pct);
-
-        const elapsed = (Date.now() - batchStartTime) / 1000;
-        const speed = elapsed > 0.25 ? totalLoaded / elapsed : 0;
-        const remainingBytes = Math.max(0, batchTotalBytes - totalLoaded);
-        const etaSecs = speed > 0 ? remainingBytes / speed : 0;
-
-        setTransferredText(
-          `${formatBytes(totalLoaded)} / ${formatBytes(batchTotalBytes)} (${formatBytes(speed)}/s)`
-        );
-        if (speed > 0 && remainingBytes > 0) {
-          setEtaText(
-            (t.upload_eta_remaining || '{time} left').replace('{time}', formatDuration(etaSecs))
-          );
-        } else {
-          setEtaText('');
-        }
+        if (e.lengthComputable) updateProgress(e.loaded);
       });
 
       xhr.addEventListener('load', () => {

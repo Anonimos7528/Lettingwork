@@ -1,0 +1,51 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push to Hugging Face Space (if HF_TOKEN and HF_SPACE are set)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ secrets.HF_SPACE }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "HF_TOKEN o HF_SPACE no configurados aún en GitHub Secrets; omitiendo despliegue a Hugging Face."
+            exit 0
+          fi
+
+          rm -rf /tmp/hf-stage
+          mkdir -p /tmp/hf-stage
+          cp -R . /tmp/hf-stage/
+          cd /tmp/hf-stage
+          rm -rf .git node_modules dist dev-dist uploads *.db *.db-* android *.apk
+
+          cat << 'EOF' > README.md
+          ---
+          title: LettingWork
+          emoji: ☁️
+          colorFrom: blue
+          colorTo: cyan
+          sdk: docker
+          app_port: 7860
+          pinned: false
+          ---
+
+          # LettingWork
+          EOF
+
+          git init -b main
+          git config user.name "LettingWork Deploy"
+          git config user.email "deploy@lettingwork.local"
+          git add .
+          git commit -m "Deploy LettingWork to Hugging Face Space"
+          git push --force "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" main
