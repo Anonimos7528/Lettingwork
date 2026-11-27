@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
 import { DatabaseSync } from 'node:sqlite';
 import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
@@ -19,6 +20,9 @@ const REGISTERED_QUOTA_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB registered tier
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const SESSION_COOKIE_NAME = 'lw_session';
 const GUEST_COOKIE_NAME = 'lw_guest';
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const SUPABASE_STORAGE_BUCKET = (process.env.SUPABASE_STORAGE_BUCKET || 'lettingwork-files').trim();
 
 let FIREBASE_PROJECT_ID = '';
 try {
@@ -32,56 +36,187 @@ try {
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const db = new DatabaseSync(DB_PATH);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    salt TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
+const DB_REMOTE_KEY = '_system/lettingwork.db';
+let db!: DatabaseSync;
+let FILE_ACCESS_SECRET = '';
 
-  CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    expires_at INTEGER NOT NULL,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
+async function restoreDbFromSupabase(): Promise<void> {
+  if (!isSupabaseStorageEnabled()) return;
+  if (fs.existsSync(DB_PATH) && fs.statSync(DB_PATH).size > 0) return;
 
-  CREATE TABLE IF NOT EXISTS files (
-    id TEXT PRIMARY KEY,
-    original_name TEXT NOT NULL,
-    stored_name TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    mime_type TEXT NOT NULL,
-    upload_time TEXT DEFAULT (datetime('now')),
-    download_count INTEGER DEFAULT 0,
-    delete_token TEXT NOT NULL,
-    user_id TEXT
-  );
-`);
+  try {
+    await ensureSupabaseBucket();
+    const url = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${DB_REMOTE_KEY}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+    });
+    if (!res.ok) return;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 0) {
+      const tmpPath = `${DB_PATH}.restore`;
+      fs.writeFileSync(tmpPath, buf);
+      fs.renameSync(tmpPath, DB_PATH);
+      console.log(`Restored SQLite database from Supabase (${buf.length} bytes).`);
+    }
+  } catch (err) {
+    console.warn('Could not restore SQLite DB from Supabase (starting fresh if none):', err);
+  }
+}
 
-try {
-  db.exec(`ALTER TABLE files ADD COLUMN user_id TEXT;`);
-} catch {
-  // Column already exists
+let dbSyncInFlight: Promise<void> | null = null;
+let dbSyncQueued = false;
+let dbSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function syncDbToSupabase(): Promise<void> {
+  if (!isSupabaseStorageEnabled() || !db) return;
+  if (dbSyncInFlight) {
+    dbSyncQueued = true;
+    await dbSyncInFlight;
+    return;
+  }
+
+  dbSyncInFlight = (async () => {
+    const snapshotPath = path.resolve(BASE_DIR, `lettingwork.db.snapshot.${process.pid}`);
+    try {
+      await ensureSupabaseBucket();
+      if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
+      const escaped = snapshotPath.replace(/'/g, "''");
+      db.exec(`VACUUM INTO '${escaped}';`);
+      const data = await fs.promises.readFile(snapshotPath);
+      const url = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${DB_REMOTE_KEY}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          'Content-Type': 'application/octet-stream',
+          'x-upsert': 'true',
+        },
+        body: data,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.warn(`Supabase DB sync failed (${res.status}): ${text}`);
+      }
+    } catch (err) {
+      console.warn('Supabase DB sync error:', err);
+    } finally {
+      try {
+        if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
+      } catch {
+        // Ignore temp cleanup errors
+      }
+    }
+  })();
+
+  try {
+    await dbSyncInFlight;
+  } finally {
+    dbSyncInFlight = null;
+  }
+
+  if (dbSyncQueued) {
+    dbSyncQueued = false;
+    await syncDbToSupabase();
+  }
 }
-try {
-  db.exec(`ALTER TABLE files ADD COLUMN guest_id TEXT;`);
-} catch {
-  // Column already exists
+
+function scheduleDbSync(delayMs = 300): void {
+  if (!isSupabaseStorageEnabled()) return;
+  if (dbSyncTimer) clearTimeout(dbSyncTimer);
+  dbSyncTimer = setTimeout(() => {
+    dbSyncTimer = null;
+    void syncDbToSupabase();
+  }, delayMs);
 }
-try {
-  db.exec(`ALTER TABLE users ADD COLUMN storage_tier TEXT NOT NULL DEFAULT 'free_10gb';`);
-} catch {
-  // Column already exists
-}
-try {
-  db.exec(`ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER NOT NULL DEFAULT 10737418240;`);
-} catch {
-  // Column already exists
+
+async function initDatabase(): Promise<void> {
+  await restoreDbFromSupabase();
+  db = new DatabaseSync(DB_PATH);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS files (
+      id TEXT PRIMARY KEY,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      mime_type TEXT NOT NULL,
+      upload_time TEXT DEFAULT (datetime('now')),
+      download_count INTEGER DEFAULT 0,
+      delete_token TEXT NOT NULL,
+      user_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS collections (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      user_id TEXT,
+      guest_id TEXT,
+      delete_token TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_files (
+      collection_id TEXT NOT NULL,
+      file_id TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      PRIMARY KEY (collection_id, file_id)
+    );
+  `);
+
+  for (const alterSql of [
+    `ALTER TABLE files ADD COLUMN user_id TEXT;`,
+    `ALTER TABLE files ADD COLUMN guest_id TEXT;`,
+    `ALTER TABLE files ADD COLUMN password_hash TEXT;`,
+    `ALTER TABLE files ADD COLUMN password_salt TEXT;`,
+    `ALTER TABLE files ADD COLUMN expires_at TEXT;`,
+    `ALTER TABLE files ADD COLUMN storage_provider TEXT NOT NULL DEFAULT 'local';`,
+    `ALTER TABLE users ADD COLUMN storage_tier TEXT NOT NULL DEFAULT 'free_10gb';`,
+    `ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER NOT NULL DEFAULT 10737418240;`,
+  ]) {
+    try {
+      db.exec(alterSql);
+    } catch {
+      // Column already exists
+    }
+  }
+
+  FILE_ACCESS_SECRET = (() => {
+    if (process.env.FILE_ACCESS_SECRET && process.env.FILE_ACCESS_SECRET.length >= 16) {
+      return process.env.FILE_ACCESS_SECRET;
+    }
+    const existingRow = db
+      .prepare(`SELECT value FROM app_config WHERE key = 'file_access_secret'`)
+      .get() as { value: string } | undefined;
+    if (existingRow?.value) return existingRow.value;
+    const generated = crypto.randomBytes(32).toString('hex');
+    db.prepare(`INSERT OR IGNORE INTO app_config (key, value) VALUES ('file_access_secret', ?)`).run(generated);
+    scheduleDbSync();
+    return generated;
+  })();
 }
 
 interface UserRow {
@@ -103,12 +238,21 @@ interface FileRow {
   download_count: number;
   delete_token: string;
   user_id: string | null;
+  guest_id?: string | null;
+  password_hash?: string | null;
+  password_salt?: string | null;
+  expires_at?: string | null;
+  storage_provider?: string | null;
 }
 
 const VALID_ID_REGEX = /^[a-zA-Z0-9_-]{4,64}$/;
 
 function generateFileId(): string {
   return `lw_${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function generateCollectionId(): string {
+  return `col_${crypto.randomBytes(6).toString('hex')}`;
 }
 
 function generateUserId(): string {
@@ -270,6 +414,175 @@ function getOrCreateGuestId(req: Request, res: Response): string {
   return guestId;
 }
 
+function readGuestIdIfPresent(req: Request): string | null {
+  const cookies = parseCookies(req.header('Cookie'));
+  const existing = cookies[GUEST_COOKIE_NAME];
+  if (existing && /^[a-zA-Z0-9_-]{12,64}$/.test(existing)) {
+    return existing;
+  }
+  return null;
+}
+
+function computeExpiresAt(rawPreset: string | undefined): string | null {
+  const preset = (rawPreset || '').trim().toLowerCase();
+  const hoursMap: Record<string, number> = {
+    '1h': 1,
+    '24h': 24,
+    '7d': 24 * 7,
+    '30d': 24 * 30,
+  };
+  const hours = hoursMap[preset];
+  if (!hours) return null;
+  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
+}
+
+function isFileExpired(row: Pick<FileRow, 'expires_at'>): boolean {
+  if (!row.expires_at) return false;
+  const ms = new Date(row.expires_at).getTime();
+  return !Number.isNaN(ms) && ms <= Date.now();
+}
+
+function signUnlockToken(fileId: string, ttlSeconds = 7200): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const sig = crypto
+    .createHmac('sha256', FILE_ACCESS_SECRET)
+    .update(`${fileId}:${exp}`)
+    .digest('hex');
+  return `${exp}.${sig}`;
+}
+
+function verifyUnlockToken(fileId: string, token: string | undefined): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const exp = Number(parts[0]);
+  if (!Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) return false;
+  const expected = crypto
+    .createHmac('sha256', FILE_ACCESS_SECRET)
+    .update(`${fileId}:${exp}`)
+    .digest('hex');
+  return timingSafeMatch(parts[1], expected);
+}
+
+function hasValidFileUnlock(req: Request, fileId: string): boolean {
+  const queryToken = typeof req.query.access === 'string' ? req.query.access : undefined;
+  const headerToken = req.header('X-File-Access');
+  const cookies = parseCookies(req.header('Cookie'));
+  const cookieToken = cookies[`lw_unlock_${fileId}`];
+  return (
+    verifyUnlockToken(fileId, queryToken) ||
+    verifyUnlockToken(fileId, headerToken) ||
+    verifyUnlockToken(fileId, cookieToken)
+  );
+}
+
+function isSupabaseStorageEnabled(): boolean {
+  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+}
+
+let supabaseBucketEnsured = false;
+
+async function ensureSupabaseBucket(): Promise<void> {
+  if (!isSupabaseStorageEnabled() || supabaseBucketEnsured) return;
+  const checkRes = await fetch(
+    `${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+    }
+  );
+  if (checkRes.ok) {
+    supabaseBucketEnsured = true;
+    return;
+  }
+  const createRes = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: SUPABASE_STORAGE_BUCKET,
+      name: SUPABASE_STORAGE_BUCKET,
+      public: false,
+    }),
+  });
+  if (createRes.ok || createRes.status === 409) {
+    supabaseBucketEnsured = true;
+    return;
+  }
+  const errBody = await createRes.text().catch(() => '');
+  throw new Error(`Supabase bucket check failed (${createRes.status}): ${errBody}`);
+}
+
+async function uploadLocalFileToSupabase(
+  localPath: string,
+  storedName: string,
+  mimeType: string
+): Promise<boolean> {
+  if (!isSupabaseStorageEnabled()) return false;
+  await ensureSupabaseBucket();
+  const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(storedName)}`;
+  const fileStream = fs.createReadStream(localPath);
+  const res = await fetch(objectUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': mimeType || 'application/octet-stream',
+      'x-upsert': 'true',
+    },
+    body: Readable.toWeb(fileStream) as unknown as BodyInit,
+    duplex: 'half',
+  } as RequestInit);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase upload failed (${res.status}): ${text}`);
+  }
+  try {
+    fs.unlinkSync(localPath);
+  } catch {
+    // Ignore local cleanup error
+  }
+  return true;
+}
+
+async function deleteFromSupabase(storedName: string): Promise<void> {
+  if (!isSupabaseStorageEnabled()) return;
+  try {
+    const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(storedName)}`;
+    await fetch(objectUrl, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+    });
+  } catch {
+    // Ignore remote cleanup errors
+  }
+}
+
+async function removeStoredFile(row: Pick<FileRow, 'id' | 'stored_name' | 'storage_provider'>): Promise<void> {
+  db.prepare('DELETE FROM collection_files WHERE file_id = ?').run(row.id);
+  db.prepare('DELETE FROM files WHERE id = ?').run(row.id);
+  if (row.storage_provider === 'supabase') {
+    await deleteFromSupabase(row.stored_name);
+    return;
+  }
+  const diskPath = resolveUploadPath(row.stored_name);
+  if (diskPath && fs.existsSync(diskPath)) {
+    try {
+      fs.unlinkSync(diskPath);
+    } catch {
+      // Ignore cleanup failure
+    }
+  }
+}
+
 let cachedFirebaseJwks: { keys: Record<string, crypto.JsonWebKey>; expiresAt: number } | null = null;
 
 async function getFirebaseJwks(): Promise<Record<string, crypto.JsonWebKey>> {
@@ -366,7 +679,7 @@ const ai = new GoogleGenAI({
   },
 });
 
-const SUPPORT_SYSTEM_INSTRUCTION = `Eres el asistente de soporte al usuario de LettingWork (https://lettingwork.onrender.com), una plataforma web de almacenamiento y compartición rápida de archivos en la nube.
+const SUPPORT_SYSTEM_INSTRUCTION = `Eres el asistente de soporte al usuario de LettingWork (https://lettingwork-production.up.railway.app), una plataforma web de almacenamiento y compartición rápida de archivos en la nube.
 
 Información clave sobre LettingWork que debes conocer:
 - Subida de archivos y nombre personalizado: Permite arrastrar y soltar o seleccionar archivos de hasta 500 MB por subida sin compresión forzada ni captchas, y cambiar el nombre del archivo antes de subirlo o posteriormente desde "Tus Subidas Recientes".
@@ -381,6 +694,7 @@ Reglas de respuesta:
 - No inventes funciones que no existen ni pidas claves API o contraseñas al usuario.`;
 
 async function startServer() {
+  await initDatabase();
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -388,7 +702,12 @@ async function startServer() {
   app.get('/api/health', (_req: Request, res: Response) => {
     try {
       db.prepare('SELECT 1').get();
-      res.json({ ok: true, status: 'operational', db: 'connected' });
+      res.json({
+        ok: true,
+        status: 'operational',
+        db: 'connected',
+        storage: isSupabaseStorageEnabled() ? 'supabase' : 'local',
+      });
     } catch {
       res.status(500).json({ ok: false, status: 'degraded' });
     }
@@ -563,6 +882,7 @@ async function startServer() {
       userId,
       expiresAt
     );
+    scheduleDbSync();
 
     res.setHeader('Set-Cookie', buildSessionCookie(token, SESSION_TTL_SECONDS));
     res.json({
@@ -613,6 +933,7 @@ async function startServer() {
       user.id,
       expiresAt
     );
+    scheduleDbSync();
 
     res.setHeader('Set-Cookie', buildSessionCookie(token, SESSION_TTL_SECONDS));
     res.json({
@@ -661,6 +982,7 @@ async function startServer() {
     const token = cookies[SESSION_COOKIE_NAME];
     if (token) {
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+      scheduleDbSync();
     }
     res.setHeader('Set-Cookie', buildSessionCookie('', 0));
     res.json({ success: true });
@@ -676,10 +998,15 @@ async function startServer() {
 
     const rows = db
       .prepare(
-        `SELECT id, original_name, size_bytes, mime_type, upload_time, download_count, delete_token
+        `SELECT id, original_name, size_bytes, mime_type, upload_time, download_count, delete_token, expires_at,
+                CASE WHEN password_hash IS NOT NULL AND password_hash != '' THEN 1 ELSE 0 END AS has_password
          FROM files WHERE user_id = ? ORDER BY upload_time DESC`
       )
-      .all(user.id);
+      .all(user.id)
+      .map((r: Record<string, unknown>) => ({
+        ...r,
+        has_password: Boolean(r.has_password),
+      }));
 
     res.json({
       success: true,
@@ -704,7 +1031,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/info/:id', (req: Request, res: Response) => {
+  app.get('/api/info/:id', async (req: Request, res: Response) => {
     const fileId = String(req.params.id || '').trim();
     if (!VALID_ID_REGEX.test(fileId)) {
       res.status(400).json({ success: false, error: 'Invalid file ID' });
@@ -713,20 +1040,80 @@ async function startServer() {
 
     const row = db
       .prepare(
-        `SELECT id, original_name, size_bytes, mime_type, upload_time, download_count
+        `SELECT id, original_name, stored_name, size_bytes, mime_type, upload_time, download_count, password_hash, expires_at, storage_provider
          FROM files WHERE id = ?`
       )
-      .get(fileId) as Omit<FileRow, 'stored_name' | 'delete_token' | 'user_id'> | undefined;
+      .get(fileId) as FileRow | undefined;
 
     if (!row) {
       res.status(404).json({ success: false, error: 'File not found or deleted' });
       return;
     }
 
-    res.json({ success: true, file: row });
+    if (isFileExpired(row)) {
+      await removeStoredFile(row);
+      res.status(410).json({ success: false, expired: true, error: 'This link has expired' });
+      return;
+    }
+
+    const requiresPassword = Boolean(row.password_hash);
+    const unlocked = !requiresPassword || hasValidFileUnlock(req, row.id);
+
+    res.json({
+      success: true,
+      file: {
+        id: row.id,
+        original_name: row.original_name,
+        size_bytes: row.size_bytes,
+        mime_type: row.mime_type,
+        upload_time: row.upload_time,
+        download_count: row.download_count,
+        requires_password: requiresPassword,
+        unlocked,
+        expires_at: row.expires_at || null,
+      },
+    });
   });
 
-  app.get('/api/download/:id', (req: Request, res: Response) => {
+  app.post('/api/file/:id/unlock', express.json(), async (req: Request, res: Response) => {
+    const fileId = String(req.params.id || '').trim();
+    if (!VALID_ID_REGEX.test(fileId)) {
+      res.status(400).json({ success: false, error: 'Invalid file ID' });
+      return;
+    }
+
+    const row = db
+      .prepare('SELECT id, stored_name, password_hash, password_salt, expires_at, storage_provider FROM files WHERE id = ?')
+      .get(fileId) as FileRow | undefined;
+
+    if (!row) {
+      res.status(404).json({ success: false, error: 'File not found' });
+      return;
+    }
+
+    if (isFileExpired(row)) {
+      await removeStoredFile(row);
+      res.status(410).json({ success: false, expired: true, error: 'This link has expired' });
+      return;
+    }
+
+    if (row.password_hash && row.password_salt) {
+      const candidate = String(req.body?.password || '');
+      if (!candidate || !verifyPassword(candidate, row.password_hash, row.password_salt)) {
+        res.status(401).json({ success: false, error: 'Incorrect password' });
+        return;
+      }
+    }
+
+    const accessToken = signUnlockToken(fileId);
+    res.append(
+      'Set-Cookie',
+      `lw_unlock_${fileId}=${encodeURIComponent(accessToken)}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=7200`
+    );
+    res.json({ success: true, access_token: accessToken });
+  });
+
+  app.get('/api/download/:id', async (req: Request, res: Response) => {
     const fileId = String(req.params.id || '').trim();
     if (!VALID_ID_REGEX.test(fileId)) {
       res.status(400).send('Invalid file ID');
@@ -739,6 +1126,50 @@ async function startServer() {
       return;
     }
 
+    if (isFileExpired(row)) {
+      await removeStoredFile(row);
+      res.status(410).send('Link expired');
+      return;
+    }
+
+    if (row.password_hash && !hasValidFileUnlock(req, row.id)) {
+      res.status(401).send('Password required');
+      return;
+    }
+
+    const encodedName = encodeURIComponent(row.original_name);
+    const asciiName = row.original_name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+
+    if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
+      try {
+        const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(row.stored_name)}`;
+        const upstream = await fetch(objectUrl, {
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+          },
+        });
+        if (!upstream.ok || !upstream.body) {
+          res.status(404).send('File unavailable on cloud storage');
+          return;
+        }
+        db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(fileId);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        const len = upstream.headers.get('content-length');
+        if (len) res.setHeader('Content-Length', len);
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
+        );
+        Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream).pipe(res);
+        return;
+      } catch {
+        if (!res.headersSent) res.status(500).send('Cloud storage read error');
+        return;
+      }
+    }
+
     const diskPath = resolveUploadPath(row.stored_name);
     if (!diskPath || !fs.existsSync(diskPath)) {
       res.status(404).send('File unavailable on storage');
@@ -747,8 +1178,6 @@ async function startServer() {
 
     db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(fileId);
 
-    const encodedName = encodeURIComponent(row.original_name);
-    const asciiName = row.original_name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
     const stat = fs.statSync(diskPath);
 
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -767,7 +1196,7 @@ async function startServer() {
   });
 
   // Inline preview / media streaming (supports HTTP Range for video/audio playback)
-  app.get('/api/view/:id', (req: Request, res: Response) => {
+  app.get('/api/view/:id', async (req: Request, res: Response) => {
     const fileId = String(req.params.id || '').trim();
     if (!VALID_ID_REGEX.test(fileId)) {
       res.status(400).send('Invalid file ID');
@@ -780,9 +1209,14 @@ async function startServer() {
       return;
     }
 
-    const diskPath = resolveUploadPath(row.stored_name);
-    if (!diskPath || !fs.existsSync(diskPath)) {
-      res.status(404).send('File unavailable on storage');
+    if (isFileExpired(row)) {
+      await removeStoredFile(row);
+      res.status(410).send('Link expired');
+      return;
+    }
+
+    if (row.password_hash && !hasValidFileUnlock(req, row.id)) {
+      res.status(401).send('Password required');
       return;
     }
 
@@ -791,6 +1225,51 @@ async function startServer() {
     const disposition = isSafeInlineMime(detectedMime) ? 'inline' : 'attachment';
     const encodedName = encodeURIComponent(row.original_name);
     const asciiName = row.original_name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+    const range = req.header('Range');
+
+    if (row.storage_provider === 'supabase' && isSupabaseStorageEnabled()) {
+      try {
+        const objectUrl = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${encodeURIComponent(row.stored_name)}`;
+        const upstreamHeaders: Record<string, string> = {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+        };
+        if (range) upstreamHeaders.Range = range;
+        const upstream = await fetch(objectUrl, { headers: upstreamHeaders });
+        if (!upstream.ok && upstream.status !== 206) {
+          res.status(upstream.status === 416 ? 416 : 404).send('File unavailable on cloud storage');
+          return;
+        }
+        res.status(upstream.status);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader(
+          'Content-Disposition',
+          `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
+        );
+        const contentRange = upstream.headers.get('content-range');
+        if (contentRange) res.setHeader('Content-Range', contentRange);
+        const contentLength = upstream.headers.get('content-length');
+        if (contentLength) res.setHeader('Content-Length', contentLength);
+        if (upstream.body) {
+          Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream).pipe(res);
+        } else {
+          res.end();
+        }
+        return;
+      } catch {
+        if (!res.headersSent) res.status(500).send('Cloud storage read error');
+        return;
+      }
+    }
+
+    const diskPath = resolveUploadPath(row.stored_name);
+    if (!diskPath || !fs.existsSync(diskPath)) {
+      res.status(404).send('File unavailable on storage');
+      return;
+    }
+
     const stat = fs.statSync(diskPath);
     const total = stat.size;
 
@@ -802,7 +1281,6 @@ async function startServer() {
       `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
     );
 
-    const range = req.header('Range');
     if (range && total > 0) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
       if (match) {
@@ -847,6 +1325,19 @@ async function startServer() {
       ? getUserStorageUsage(ownerUserId)
       : getGuestStorageUsage(guestId!);
     const rawHeaderFilename = req.header('X-Filename');
+    const rawHeaderPassword = req.header('X-File-Password');
+    const rawHeaderExpires = req.header('X-File-Expires');
+
+    let decodedPassword = '';
+    if (rawHeaderPassword) {
+      try {
+        decodedPassword = decodeURIComponent(rawHeaderPassword).slice(0, 128);
+      } catch {
+        decodedPassword = rawHeaderPassword.slice(0, 128);
+      }
+    }
+    const passwordCreds = decodedPassword ? hashPassword(decodedPassword) : null;
+    const expiresAt = computeExpiresAt(rawHeaderExpires);
 
     if (rawHeaderFilename) {
       let decodedName = rawHeaderFilename;
@@ -926,15 +1417,39 @@ async function startServer() {
 
       req.on('end', () => {
         if (aborted) return;
-        writeStream.end(() => {
+        writeStream.end(async () => {
           const fileId = generateFileId();
           const deleteToken = crypto.randomBytes(24).toString('hex');
           const mimeType = guessMimeType(originalName, req.header('Content-Type') || 'application/octet-stream');
+          let storageProvider = 'local';
+
+          if (isSupabaseStorageEnabled()) {
+            try {
+              const uploaded = await uploadLocalFileToSupabase(destPath, storedName, mimeType);
+              if (uploaded) storageProvider = 'supabase';
+            } catch (err) {
+              console.error('External storage upload fallback to local:', err);
+            }
+          }
 
           db.prepare(
-            `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(fileId, originalName, storedName, bytesWritten, mimeType, deleteToken, ownerUserId, guestId);
+            `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id, password_hash, password_salt, expires_at, storage_provider)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            fileId,
+            originalName,
+            storedName,
+            bytesWritten,
+            mimeType,
+            deleteToken,
+            ownerUserId,
+            guestId,
+            passwordCreds ? passwordCreds.hash : null,
+            passwordCreds ? passwordCreds.salt : null,
+            expiresAt,
+            storageProvider
+          );
+          await syncDbToSupabase();
 
           res.json({
             success: true,
@@ -944,6 +1459,10 @@ async function startServer() {
             mime_type: mimeType,
             share_url: `/f/${fileId}`,
             delete_token: deleteToken,
+            download_count: 0,
+            has_password: Boolean(passwordCreds),
+            expires_at: expiresAt,
+            storage_provider: storageProvider,
           });
         });
       });
@@ -959,7 +1478,7 @@ async function startServer() {
       return;
     }
 
-    uploadMiddleware.single('file')(req, res, (err) => {
+    uploadMiddleware.single('file')(req, res, async (err) => {
       if (err) {
         res.status(400).json({ success: false, error: err.message || 'Upload error' });
         return;
@@ -987,11 +1506,35 @@ async function startServer() {
       const deleteToken = crypto.randomBytes(24).toString('hex');
       const originalName = sanitizeFilename(req.file.originalname);
       const mimeType = guessMimeType(originalName, req.file.mimetype);
+      let storageProvider = 'local';
+
+      if (isSupabaseStorageEnabled()) {
+        try {
+          const uploaded = await uploadLocalFileToSupabase(req.file.path, req.file.filename, mimeType);
+          if (uploaded) storageProvider = 'supabase';
+        } catch (uploadErr) {
+          console.error('External storage upload fallback to local:', uploadErr);
+        }
+      }
 
       db.prepare(
-        `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(fileId, originalName, req.file.filename, req.file.size, mimeType, deleteToken, ownerUserId, guestId);
+        `INSERT INTO files (id, original_name, stored_name, size_bytes, mime_type, delete_token, user_id, guest_id, password_hash, password_salt, expires_at, storage_provider)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        fileId,
+        originalName,
+        req.file.filename,
+        req.file.size,
+        mimeType,
+        deleteToken,
+        ownerUserId,
+        guestId,
+        passwordCreds ? passwordCreds.hash : null,
+        passwordCreds ? passwordCreds.salt : null,
+        expiresAt,
+        storageProvider
+      );
+      await syncDbToSupabase();
 
       res.json({
         success: true,
@@ -1001,11 +1544,15 @@ async function startServer() {
         mime_type: mimeType,
         share_url: `/f/${fileId}`,
         delete_token: deleteToken,
+        download_count: 0,
+        has_password: Boolean(passwordCreds),
+        expires_at: expiresAt,
+        storage_provider: storageProvider,
       });
     });
   });
 
-  app.delete('/api/file/:id', express.json(), (req: Request, res: Response) => {
+  app.delete('/api/file/:id', express.json(), async (req: Request, res: Response) => {
     if (!isSameOriginOrCustomHeader(req)) {
       res.status(403).json({ success: false, error: 'Invalid request origin' });
       return;
@@ -1018,20 +1565,22 @@ async function startServer() {
     }
 
     const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const callerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
     const token = String(
       req.header('X-Delete-Token') || (req.body && req.body.delete_token) || ''
     ).trim();
 
     const row = db
-      .prepare('SELECT stored_name, delete_token, user_id FROM files WHERE id = ?')
-      .get(fileId) as Pick<FileRow, 'stored_name' | 'delete_token' | 'user_id'> | undefined;
+      .prepare('SELECT id, stored_name, delete_token, user_id, storage_provider FROM files WHERE id = ?')
+      .get(fileId) as Pick<FileRow, 'id' | 'stored_name' | 'delete_token' | 'user_id' | 'storage_provider'> | undefined;
 
     if (!row) {
       res.status(404).json({ success: false, error: 'File not found' });
       return;
     }
 
-    const ownsBySession = Boolean(sessionUser && row.user_id && row.user_id === sessionUser.id);
+    const ownsBySession = Boolean(callerUserId && row.user_id && row.user_id === callerUserId);
     const ownsByToken = Boolean(token && timingSafeMatch(token, row.delete_token));
 
     if (!ownsBySession && !ownsByToken) {
@@ -1039,20 +1588,12 @@ async function startServer() {
       return;
     }
 
-    db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
-    const diskPath = resolveUploadPath(row.stored_name);
-    if (diskPath && fs.existsSync(diskPath)) {
-      try {
-        fs.unlinkSync(diskPath);
-      } catch {
-        // Ignore cleanup failure
-      }
-    }
-
+    await removeStoredFile(row);
+    await syncDbToSupabase();
     res.json({ success: true, message: 'File deleted successfully' });
   });
 
-  app.patch('/api/file/:id', express.json(), (req: Request, res: Response) => {
+  app.patch('/api/file/:id', express.json(), async (req: Request, res: Response) => {
     if (!isSameOriginOrCustomHeader(req)) {
       res.status(403).json({ success: false, error: 'Invalid request origin' });
       return;
@@ -1072,23 +1613,27 @@ async function startServer() {
     }
 
     const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const callerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
+    const guestId = readGuestIdIfPresent(req);
     const token = String(
       req.header('X-Delete-Token') || (req.body && req.body.delete_token) || ''
     ).trim();
 
     const row = db
-      .prepare('SELECT original_name, mime_type, delete_token, user_id FROM files WHERE id = ?')
-      .get(fileId) as Pick<FileRow, 'original_name' | 'mime_type' | 'delete_token' | 'user_id'> | undefined;
+      .prepare('SELECT original_name, mime_type, delete_token, user_id, guest_id FROM files WHERE id = ?')
+      .get(fileId) as Pick<FileRow, 'original_name' | 'mime_type' | 'delete_token' | 'user_id' | 'guest_id'> | undefined;
 
     if (!row) {
       res.status(404).json({ success: false, error: 'File not found' });
       return;
     }
 
-    const ownsBySession = Boolean(sessionUser && row.user_id && row.user_id === sessionUser.id);
+    const ownsBySession = Boolean(callerUserId && row.user_id && row.user_id === callerUserId);
+    const ownsByGuest = Boolean(guestId && row.guest_id && row.guest_id === guestId);
     const ownsByToken = Boolean(token && timingSafeMatch(token, row.delete_token));
 
-    if (!ownsBySession && !ownsByToken) {
+    if (!ownsBySession && !ownsByGuest && !ownsByToken) {
       res.status(403).json({ success: false, error: 'No tienes permiso para renombrar este archivo.' });
       return;
     }
@@ -1099,6 +1644,7 @@ async function startServer() {
       updatedMime,
       fileId
     );
+    await syncDbToSupabase();
 
     res.json({
       success: true,
@@ -1106,6 +1652,243 @@ async function startServer() {
       original_name: newName,
       mime_type: updatedMime,
     });
+  });
+
+  // Shareable Folder / Collection Links
+  app.post('/api/collections', express.json(), async (req: Request, res: Response) => {
+    if (!isSameOriginOrCustomHeader(req)) {
+      res.status(403).json({ success: false, error: 'Invalid request origin' });
+      return;
+    }
+
+    const rawTitle = String(req.body?.title || '').trim();
+    const title = (rawTitle || 'Shared Collection').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 120);
+    const rawFileIds = Array.isArray(req.body?.file_ids) ? req.body.file_ids : [];
+    const tokensMap = (req.body?.tokens && typeof req.body.tokens === 'object') ? req.body.tokens as Record<string, string> : {};
+
+    const uniqueIds: string[] = Array.from(
+      new Set<string>(
+        rawFileIds
+          .filter((id: unknown): id is string => typeof id === 'string' && VALID_ID_REGEX.test(id.trim()))
+          .map((id: string) => id.trim())
+      )
+    ).slice(0, 100);
+
+    if (uniqueIds.length === 0) {
+      res.status(400).json({ success: false, error: 'Select at least one valid file.' });
+      return;
+    }
+
+    const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const ownerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
+    const guestId = ownerUserId ? readGuestIdIfPresent(req) : getOrCreateGuestId(req, res);
+
+    const validRows: FileRow[] = [];
+    for (const fId of uniqueIds) {
+      const row = db.prepare('SELECT * FROM files WHERE id = ?').get(fId) as FileRow | undefined;
+      if (!row || isFileExpired(row)) continue;
+      const tokenMatch = Boolean(tokensMap[fId] && timingSafeMatch(String(tokensMap[fId]), row.delete_token));
+      const userMatch = Boolean(ownerUserId && row.user_id && row.user_id === ownerUserId);
+      const guestMatch = Boolean(guestId && row.guest_id && row.guest_id === guestId);
+      if (tokenMatch || userMatch || guestMatch) {
+        validRows.push(row);
+      }
+    }
+
+    if (validRows.length === 0) {
+      res.status(403).json({ success: false, error: 'No eligible files found for collection.' });
+      return;
+    }
+
+    const collectionId = generateCollectionId();
+    const deleteToken = crypto.randomBytes(24).toString('hex');
+    const createdAt = new Date().toISOString();
+
+    db.prepare(
+      `INSERT INTO collections (id, title, created_at, user_id, guest_id, delete_token)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(collectionId, title, createdAt, ownerUserId, guestId, deleteToken);
+
+    const insertItem = db.prepare(
+      `INSERT INTO collection_files (collection_id, file_id, sort_order) VALUES (?, ?, ?)`
+    );
+    validRows.forEach((f, index) => {
+      insertItem.run(collectionId, f.id, index);
+    });
+
+    const totalBytes = validRows.reduce((acc, f) => acc + (f.size_bytes || 0), 0);
+    await syncDbToSupabase();
+
+    res.json({
+      success: true,
+      collection: {
+        id: collectionId,
+        title,
+        share_url: `/c/${collectionId}`,
+        delete_token: deleteToken,
+        created_at: createdAt,
+        file_count: validRows.length,
+        total_bytes: totalBytes,
+      },
+    });
+  });
+
+  app.get('/api/user/collections', async (req: Request, res: Response) => {
+    const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const ownerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
+    const guestId = readGuestIdIfPresent(req);
+
+    if (!ownerUserId && !guestId) {
+      res.json({ success: true, collections: [] });
+      return;
+    }
+
+    const rows = ownerUserId
+      ? db
+          .prepare(
+            `SELECT c.id, c.title, c.created_at, c.delete_token,
+                    COUNT(f.id) AS file_count,
+                    COALESCE(SUM(f.size_bytes), 0) AS total_bytes
+             FROM collections c
+             LEFT JOIN collection_files cf ON cf.collection_id = c.id
+             LEFT JOIN files f ON f.id = cf.file_id
+             WHERE c.user_id = ?
+             GROUP BY c.id
+             ORDER BY c.created_at DESC`
+          )
+          .all(ownerUserId)
+      : db
+          .prepare(
+            `SELECT c.id, c.title, c.created_at, c.delete_token,
+                    COUNT(f.id) AS file_count,
+                    COALESCE(SUM(f.size_bytes), 0) AS total_bytes
+             FROM collections c
+             LEFT JOIN collection_files cf ON cf.collection_id = c.id
+             LEFT JOIN files f ON f.id = cf.file_id
+             WHERE c.user_id IS NULL AND c.guest_id = ?
+             GROUP BY c.id
+             ORDER BY c.created_at DESC`
+          )
+          .all(guestId!);
+
+    const collections = rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      title: String(r.title),
+      share_url: `/c/${String(r.id)}`,
+      delete_token: String(r.delete_token || ''),
+      created_at: String(r.created_at),
+      file_count: Number(r.file_count || 0),
+      total_bytes: Number(r.total_bytes || 0),
+    }));
+
+    res.json({ success: true, collections });
+  });
+
+  app.get('/api/collections/:id', (req: Request, res: Response) => {
+    const collectionId = String(req.params.id || '').trim();
+    if (!VALID_ID_REGEX.test(collectionId)) {
+      res.status(400).json({ success: false, error: 'Invalid collection ID' });
+      return;
+    }
+
+    const col = db
+      .prepare('SELECT id, title, created_at FROM collections WHERE id = ?')
+      .get(collectionId) as { id: string; title: string; created_at: string } | undefined;
+
+    if (!col) {
+      res.status(404).json({ success: false, error: 'Collection not found' });
+      return;
+    }
+
+    const rawFiles = db
+      .prepare(
+        `SELECT f.id, f.original_name, f.size_bytes, f.mime_type, f.upload_time, f.download_count,
+                f.password_hash, f.expires_at
+         FROM collection_files cf
+         JOIN files f ON f.id = cf.file_id
+         WHERE cf.collection_id = ?
+         ORDER BY cf.sort_order ASC`
+      )
+      .all(collectionId) as unknown as Array<
+      Pick<
+        FileRow,
+        | 'id'
+        | 'original_name'
+        | 'size_bytes'
+        | 'mime_type'
+        | 'upload_time'
+        | 'download_count'
+        | 'password_hash'
+        | 'expires_at'
+      >
+    >;
+
+    const files = rawFiles
+      .filter((f) => !isFileExpired(f))
+      .map((f) => ({
+        id: f.id,
+        original_name: f.original_name,
+        size_bytes: f.size_bytes,
+        mime_type: f.mime_type,
+        upload_time: f.upload_time,
+        download_count: f.download_count,
+        requires_password: Boolean(f.password_hash),
+        expires_at: f.expires_at || null,
+      }));
+
+    res.json({
+      success: true,
+      collection: {
+        id: col.id,
+        title: col.title,
+        created_at: col.created_at,
+        files,
+      },
+    });
+  });
+
+  app.delete('/api/collections/:id', express.json(), async (req: Request, res: Response) => {
+    if (!isSameOriginOrCustomHeader(req)) {
+      res.status(403).json({ success: false, error: 'Invalid request origin' });
+      return;
+    }
+
+    const collectionId = String(req.params.id || '').trim();
+    if (!VALID_ID_REGEX.test(collectionId)) {
+      res.status(400).json({ success: false, error: 'Invalid collection ID' });
+      return;
+    }
+
+    const sessionUser = getSessionUser(req);
+    const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
+    const callerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
+    const guestId = readGuestIdIfPresent(req);
+    const token = String(req.header('X-Delete-Token') || (req.body && req.body.delete_token) || '').trim();
+
+    const col = db
+      .prepare('SELECT id, user_id, guest_id, delete_token FROM collections WHERE id = ?')
+      .get(collectionId) as { id: string; user_id: string | null; guest_id: string | null; delete_token: string } | undefined;
+
+    if (!col) {
+      res.status(404).json({ success: false, error: 'Collection not found' });
+      return;
+    }
+
+    const ownsBySession = Boolean(callerUserId && col.user_id && col.user_id === callerUserId);
+    const ownsByGuest = Boolean(guestId && col.guest_id && col.guest_id === guestId);
+    const ownsByToken = Boolean(token && timingSafeMatch(token, col.delete_token));
+
+    if (!ownsBySession && !ownsByGuest && !ownsByToken) {
+      res.status(403).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    db.prepare('DELETE FROM collection_files WHERE collection_id = ?').run(collectionId);
+    db.prepare('DELETE FROM collections WHERE id = ?').run(collectionId);
+    await syncDbToSupabase();
+    res.json({ success: true });
   });
 
   if (process.env.NODE_ENV !== 'production') {
@@ -1122,9 +1905,20 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`LettingWork server listening on http://0.0.0.0:${PORT}`);
   });
+
+  const gracefulShutdown = async () => {
+    try {
+      await syncDbToSupabase();
+    } finally {
+      server.close(() => process.exit(0));
+    }
+  };
+
+  process.on('SIGTERM', () => void gracefulShutdown());
+  process.on('SIGINT', () => void gracefulShutdown());
 }
 
 startServer().catch((err) => {

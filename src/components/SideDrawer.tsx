@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Cloud,
   X,
   Upload,
   Folder,
@@ -12,8 +11,10 @@ import {
   User as UserIcon,
   LogOut,
   MessageCircleQuestion,
+  Cloud,
 } from 'lucide-react';
 import { formatBytes } from '../i18n';
+import { PWAInstallButton } from './PWAInstallButton';
 import type { ActiveUser } from '../types';
 
 interface SideDrawerProps {
@@ -87,7 +88,7 @@ export function SideDrawer({
         }`}
       >
         <div className="px-6 py-4 flex items-center justify-between border-b border-white/10">
-          <div className="flex items-center gap-2.5 text-base font-bold text-white">
+          <div className="flex items-center gap-2.5 text-base font-bold tracking-tight">
             <Cloud className="w-5 h-5 text-cyan-400" />
             <span>
               Letting<span className="text-cyan-400">Work</span>
@@ -181,6 +182,8 @@ export function SideDrawer({
             <Upload className="w-4 h-4" />
             <span>{t.drawer_btn_upload}</span>
           </button>
+
+          <PWAInstallButton t={t} variant="drawer" />
 
           {/* Cloud Storage Meter (5 GB Guest -> 10 GB Registered) */}
           <div className="rounded-lg bg-white/[0.02] border border-white/10 p-4">

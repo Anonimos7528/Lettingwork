@@ -111,6 +111,16 @@
           "description": "Owner deletion token",
           "maxLength": 128
         },
+        "hasPassword": {
+          "type": "boolean",
+          "description": "Whether the share link requires a password"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional ISO expiration timestamp for the share link",
+          "maxLength": 64
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",

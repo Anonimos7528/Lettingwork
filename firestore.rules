@@ -75,7 +75,7 @@ service cloud.firestore {
 
     function isValidUserFile(data, userId, fileId) {
       return data.keys().hasAll(['id', 'userId', 'originalName', 'sizeBytes', 'mimeType', 'shareUrl', 'deleteToken', 'createdAt'])
-        && data.keys().hasOnly(['id', 'userId', 'originalName', 'sizeBytes', 'mimeType', 'shareUrl', 'deleteToken', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'originalName', 'sizeBytes', 'mimeType', 'shareUrl', 'deleteToken', 'createdAt', 'hasPassword', 'expiresAt'])
         && data.id is string
         && data.id == fileId
         && data.id.size() >= 1 && data.id.size() <= 64
@@ -94,6 +94,8 @@ service cloud.firestore {
         && data.shareUrl.size() >= 1 && data.shareUrl.size() <= 256
         && data.deleteToken is string
         && data.deleteToken.size() >= 1 && data.deleteToken.size() <= 128
+        && (!('hasPassword' in data) || data.hasPassword is bool)
+        && (!('expiresAt' in data) || (data.expiresAt is string && data.expiresAt.size() <= 64))
         && data.createdAt is timestamp;
     }
 
@@ -145,7 +147,7 @@ service cloud.firestore {
           && incoming().shareUrl == existing().shareUrl
           && incoming().deleteToken == existing().deleteToken
           && incoming().createdAt == existing().createdAt
-          && incoming().diff(existing()).affectedKeys().hasOnly(['originalName', 'mimeType']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['originalName', 'mimeType', 'hasPassword', 'expiresAt']);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(fileId) && existing().userId == request.auth.uid;
       }
     }

@@ -1,5 +1,6 @@
-import { Cloud, Upload, Menu } from 'lucide-react';
+import { Upload, Menu, Cloud } from 'lucide-react';
 import { LanguageSelector } from './LanguageSelector';
+import { PWAInstallButton } from './PWAInstallButton';
 import type { LangCode, ActiveUser } from '../types';
 
 interface TopNavProps {
@@ -36,7 +37,7 @@ export function TopNav({
         <button
           type="button"
           onClick={() => onNavigateSection('top')}
-          className="flex items-center gap-2.5 font-display font-bold text-base text-white whitespace-nowrap shrink-0 cursor-pointer"
+          className="flex items-center gap-2.5 text-lg font-bold tracking-tight whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Cloud className="w-5 h-5 text-cyan-400" />
           <span>
@@ -84,6 +85,8 @@ export function TopNav({
             <Upload className="w-3.5 h-3.5" />
             <span>{t.nav_upload}</span>
           </button>
+
+          <PWAInstallButton t={t} variant="nav" />
 
           <LanguageSelector lang={lang} onSelectLang={onSelectLang} />
 

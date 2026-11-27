@@ -4,7 +4,7 @@
 1. A `UserProfile` document at `/users/{userId}` can only be read, created, or updated by the authenticated user whose `request.auth.uid == userId`, with `uid == request.auth.uid`, valid bounded string lengths, `storageTier == "free_10gb"`, `storageLimitBytes == 10737418240` (10 GB), `0 <= storageUsedBytes <= 10737418240`, and server-verified timestamps (`request.time`).
 2. `UserProfile` documents cannot be listed (`allow list: if false`) to prevent PII harvesting or user enumeration.
 3. A `UserFileRecord` document at `/users/{userId}/files/{fileId}` belongs strictly to the parent user (`userId == request.auth.uid`), requires `isValidId(userId)` and `isValidId(fileId)` on single-doc operations, enforces `0 <= sizeBytes <= 524288000` (500 MB per file), enforces `resource.data.userId == request.auth.uid` on `list`, verifies parent existence and atomic quota (`getAfter` user `storageUsedBytes <= 10737418240`), and isolates `deleteToken` solely inside the owner's private subcollection.
-4. No shadow/ghost fields are accepted on `create` or `update` (`keys().hasOnly(...)` + `affectedKeys().hasOnly(...)`).
+4. No shadow/ghost fields are accepted on `create` or `update` (`keys().hasOnly(...)` + `affectedKeys().hasOnly(...)`). Optional `hasPassword` (boolean) and `expiresAt` (string <= 64 chars) metadata are strictly type-and-length validated.
 5. `createdAt`, `uid`, and `userId` are immutable once created.
 
 ## 2. Adversarial Payloads ("Dirty Dozen")
