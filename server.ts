@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
-import { DatabaseSync } from 'node:sqlite';
 import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
+import type { SqlJsStatic } from 'sql.js';
 
 const BASE_DIR = path.resolve(process.cwd());
 const IS_VERCEL = Boolean(process.env.VERCEL);
@@ -48,15 +48,183 @@ try {
 } catch {
   FIREBASE_PROJECT_ID = '';
 }
+if (!FIREBASE_PROJECT_ID) {
+  FIREBASE_PROJECT_ID =
+    (process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'deft-truth-54cnq').trim();
+}
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+function ensureWritableDirs(): void {
+  try {
+    fs.mkdirSync(WRITABLE_BASE_DIR, { recursive: true });
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  } catch {
+    // Ignore directory creation errors outside writable paths
+  }
+}
+
+interface DbStatement {
+  get(...params: unknown[]): Record<string, unknown> | undefined;
+  all(...params: unknown[]): Array<Record<string, unknown>>;
+  run(...params: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
+}
+
+interface DbLike {
+  exec(sql: string): void;
+  prepare(sql: string): DbStatement;
+  close(): void;
+  exportSnapshotBytes(): Promise<Buffer>;
+}
+
+let sqlJsStaticPromise: Promise<SqlJsStatic> | null = null;
+
+async function loadSqlJsStatic(): Promise<SqlJsStatic> {
+  if (!sqlJsStaticPromise) {
+    sqlJsStaticPromise = (async () => {
+      // @ts-expect-error sql-wasm-inline subpath has no standalone .d.ts in @types/sql.js
+      const mod = await import('sql.js/dist/sql-wasm-inline.js');
+      const initSqlJs = (mod.default || mod) as (config?: unknown) => Promise<SqlJsStatic>;
+      return initSqlJs();
+    })();
+  }
+  return sqlJsStaticPromise;
+}
+
+function normalizeSqlBindParams(params: unknown[]): Array<string | number | Uint8Array | null> {
+  return params.map((value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'bigint') return Number(value);
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    return value as string | number | Uint8Array;
+  });
+}
+
+async function createSqlJsAdapter(filePath: string): Promise<DbLike> {
+  const SQL = await loadSqlJsStatic();
+  let initialBytes: Uint8Array | undefined;
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+      initialBytes = fs.readFileSync(filePath);
+    }
+  } catch {
+    initialBytes = undefined;
+  }
+
+  const sqlDb = initialBytes ? new SQL.Database(initialBytes) : new SQL.Database();
+
+  return {
+    exec(sql: string) {
+      sqlDb.exec(sql);
+    },
+    prepare(sql: string): DbStatement {
+      return {
+        get(...params: unknown[]) {
+          const stmt = sqlDb.prepare(sql);
+          try {
+            const bound = normalizeSqlBindParams(params);
+            if (bound.length > 0) stmt.bind(bound);
+            if (!stmt.step()) return undefined;
+            return stmt.getAsObject() as Record<string, unknown>;
+          } finally {
+            stmt.free();
+          }
+        },
+        all(...params: unknown[]) {
+          const stmt = sqlDb.prepare(sql);
+          try {
+            const bound = normalizeSqlBindParams(params);
+            if (bound.length > 0) stmt.bind(bound);
+            const rows: Array<Record<string, unknown>> = [];
+            while (stmt.step()) {
+              rows.push(stmt.getAsObject() as Record<string, unknown>);
+            }
+            return rows;
+          } finally {
+            stmt.free();
+          }
+        },
+        run(...params: unknown[]) {
+          const stmt = sqlDb.prepare(sql);
+          try {
+            const bound = normalizeSqlBindParams(params);
+            if (bound.length > 0) stmt.bind(bound);
+            stmt.step();
+            return {
+              changes: sqlDb.getRowsModified(),
+              lastInsertRowid: 0,
+            };
+          } finally {
+            stmt.free();
+          }
+        },
+      };
+    },
+    close() {
+      sqlDb.close();
+    },
+    async exportSnapshotBytes() {
+      return Buffer.from(sqlDb.export());
+    },
+  };
+}
+
+async function createNodeSqliteAdapter(filePath: string): Promise<DbLike> {
+  const sqliteModule = ['node', 'sqlite'].join(':');
+  const { DatabaseSync } = (await import(/* @vite-ignore */ sqliteModule)) as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      prepare(sql: string): DbStatement;
+      close(): void;
+    };
+  };
+  const nativeDb = new DatabaseSync(filePath);
+  return {
+    exec(sql: string) {
+      nativeDb.exec(sql);
+    },
+    prepare(sql: string): DbStatement {
+      return nativeDb.prepare(sql);
+    },
+    close() {
+      nativeDb.close();
+    },
+    async exportSnapshotBytes() {
+      ensureWritableDirs();
+      const snapshotPath = path.resolve(WRITABLE_BASE_DIR, `lettingwork.db.snapshot.${process.pid}.${Date.now()}`);
+      try {
+        if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
+        const escaped = snapshotPath.replace(/'/g, "''");
+        nativeDb.exec(`VACUUM INTO '${escaped}';`);
+        return await fs.promises.readFile(snapshotPath);
+      } finally {
+        try {
+          if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
+        } catch {
+          // Ignore temp cleanup errors
+        }
+      }
+    },
+  };
+}
+
+async function openDatabaseConnection(): Promise<DbLike> {
+  ensureWritableDirs();
+  if (!IS_VERCEL) {
+    try {
+      return await createNodeSqliteAdapter(DB_PATH);
+    } catch (err) {
+      console.warn('Falling back to sql.js database adapter:', err);
+    }
+  }
+  return createSqlJsAdapter(DB_PATH);
+}
 
 const DB_REMOTE_KEY = '_system/lettingwork.db';
-let db!: DatabaseSync;
+let db!: DbLike;
 let FILE_ACCESS_SECRET = '';
 
 async function restoreDbFromSupabase(force = false): Promise<boolean> {
   if (!isSupabaseStorageEnabled()) return false;
+  ensureWritableDirs();
   if (!force && fs.existsSync(DB_PATH) && fs.statSync(DB_PATH).size > 0) return false;
 
   try {
@@ -97,7 +265,7 @@ async function refreshDbIfServerlessMissing(force = false): Promise<void> {
     } catch {
       // Ignore close error
     }
-    db = new DatabaseSync(DB_PATH);
+    db = await openDatabaseConnection();
   }
 }
 
@@ -114,13 +282,9 @@ async function syncDbToSupabase(): Promise<void> {
   }
 
   dbSyncInFlight = (async () => {
-    const snapshotPath = path.resolve(WRITABLE_BASE_DIR, `lettingwork.db.snapshot.${process.pid}`);
     try {
       await ensureSupabaseBucket();
-      if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
-      const escaped = snapshotPath.replace(/'/g, "''");
-      db.exec(`VACUUM INTO '${escaped}';`);
-      const data = await fs.promises.readFile(snapshotPath);
+      const data = await db.exportSnapshotBytes();
       const url = `${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(SUPABASE_STORAGE_BUCKET)}/${DB_REMOTE_KEY}`;
       const res = await fetch(url, {
         method: 'POST',
@@ -130,7 +294,7 @@ async function syncDbToSupabase(): Promise<void> {
           'Content-Type': 'application/octet-stream',
           'x-upsert': 'true',
         },
-        body: data,
+        body: new Uint8Array(data),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -138,12 +302,6 @@ async function syncDbToSupabase(): Promise<void> {
       }
     } catch (err) {
       console.warn('Supabase DB sync error:', err);
-    } finally {
-      try {
-        if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath);
-      } catch {
-        // Ignore temp cleanup errors
-      }
     }
   })();
 
@@ -169,8 +327,9 @@ function scheduleDbSync(delayMs = 300): void {
 }
 
 async function initDatabase(): Promise<void> {
+  ensureWritableDirs();
   await restoreDbFromSupabase();
-  db = new DatabaseSync(DB_PATH);
+  db = await openDatabaseConnection();
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_config (
       key TEXT PRIMARY KEY,
@@ -239,19 +398,25 @@ async function initDatabase(): Promise<void> {
     }
   }
 
-  FILE_ACCESS_SECRET = (() => {
-    if (process.env.FILE_ACCESS_SECRET && process.env.FILE_ACCESS_SECRET.length >= 16) {
-      return process.env.FILE_ACCESS_SECRET;
-    }
+  if (process.env.FILE_ACCESS_SECRET && process.env.FILE_ACCESS_SECRET.length >= 16) {
+    FILE_ACCESS_SECRET = process.env.FILE_ACCESS_SECRET;
+  } else {
     const existingRow = db
       .prepare(`SELECT value FROM app_config WHERE key = 'file_access_secret'`)
       .get() as { value: string } | undefined;
-    if (existingRow?.value) return existingRow.value;
-    const generated = crypto.randomBytes(32).toString('hex');
-    db.prepare(`INSERT OR IGNORE INTO app_config (key, value) VALUES ('file_access_secret', ?)`).run(generated);
-    scheduleDbSync();
-    return generated;
-  })();
+    if (existingRow?.value) {
+      FILE_ACCESS_SECRET = existingRow.value;
+    } else {
+      const generated = crypto.randomBytes(32).toString('hex');
+      db.prepare(`INSERT OR IGNORE INTO app_config (key, value) VALUES ('file_access_secret', ?)`).run(generated);
+      if (IS_VERCEL) {
+        await syncDbToSupabase();
+      } else {
+        scheduleDbSync();
+      }
+      FILE_ACCESS_SECRET = generated;
+    }
+  }
 }
 
 interface UserRow {
@@ -811,7 +976,11 @@ async function cleanupExpiredFiles(force = false): Promise<number> {
     }
   }
   if (removed > 0) {
-    scheduleDbSync();
+    if (IS_VERCEL) {
+      await syncDbToSupabase();
+    } else {
+      scheduleDbSync();
+    }
   }
   return removed;
 }
@@ -890,7 +1059,10 @@ async function verifyFirebaseIdToken(req: Request): Promise<string | null> {
 }
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  destination: (_req, _file, cb) => {
+    ensureWritableDirs();
+    cb(null, UPLOADS_DIR);
+  },
   filename: (_req, file, cb) => {
     const clean = sanitizeFilename(file.originalname);
     const ext = path.extname(clean).slice(0, 16);
@@ -903,16 +1075,22 @@ const uploadMiddleware = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+let aiClient: GoogleGenAI | null = null;
+function getAiClient(): GoogleGenAI {
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return aiClient;
+}
 
-const SUPPORT_SYSTEM_INSTRUCTION = `Eres el asistente de soporte al usuario de LettingWork (https://lettingwork-production.up.railway.app), una plataforma web de almacenamiento y compartición rápida de archivos en la nube.
+const SUPPORT_SYSTEM_INSTRUCTION = `Eres el asistente de soporte al usuario de LettingWork (https://lettingwork.vercel.app), una plataforma web de almacenamiento y compartición rápida de archivos en la nube.
 
 Información clave sobre LettingWork que debes conocer:
 - Subida de archivos y nombre personalizado: Permite arrastrar y soltar o seleccionar archivos de hasta 500 MB por subida sin compresión forzada ni captchas, y cambiar el nombre del archivo antes de subirlo o posteriormente desde "Tus Subidas Recientes".
@@ -1075,7 +1253,7 @@ export async function createApp() {
         let lastErr: unknown;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const chat = ai.chats.create({
+            const chat = getAiClient().chats.create({
               model,
               config: {
                 systemInstruction: `${SUPPORT_SYSTEM_INSTRUCTION}\nIdioma activo de la interfaz del usuario: ${uiLang}.`,
@@ -2461,7 +2639,8 @@ export async function createApp() {
   });
 
   if (process.env.NODE_ENV !== 'production' && !IS_VERCEL) {
-    const { createServer: createViteServer } = await import('vite');
+    const vitePkg = ['vi', 'te'].join('');
+    const { createServer: createViteServer } = await import(/* @vite-ignore */ vitePkg);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

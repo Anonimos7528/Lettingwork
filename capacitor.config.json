@@ -3,7 +3,7 @@
   "appName": "LettingWork",
   "webDir": "dist",
   "server": {
-    "url": "https://lettingwork-production.up.railway.app",
+    "url": "https://lettingwork.vercel.app",
     "cleartext": false,
     "androidScheme": "https"
   },

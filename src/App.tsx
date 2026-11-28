@@ -1211,13 +1211,13 @@ function LettingWorkApp() {
                 </div>
 
                 <a
-                  href="https://lettingwork-production.up.railway.app"
+                  href="https://lettingwork.vercel.app"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 text-xs sm:text-sm text-slate-300 hover:text-cyan-300 transition-colors whitespace-nowrap"
                 >
                   <Globe className="w-4 h-4 text-cyan-400" />
-                  <span>lettingwork-production.up.railway.app</span>
+                  <span>lettingwork.vercel.app</span>
                 </a>
               </div>
 
