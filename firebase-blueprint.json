@@ -2,7 +2,7 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Private user account profile stored in Firestore with persistent 10GB storage tier metadata",
+      "description": "Private user account profile stored in Firestore with persistent 2GB storage tier metadata",
       "type": "object",
       "properties": {
         "uid": {
@@ -35,12 +35,12 @@
         },
         "storageTier": {
           "type": "string",
-          "enum": ["free_10gb"],
-          "description": "Persistent storage tier unlocked by registered accounts (10 GB)"
+          "enum": ["free_2gb"],
+          "description": "Persistent storage tier unlocked by registered accounts (2 GB)"
         },
         "storageLimitBytes": {
           "type": "number",
-          "description": "Maximum storage quota in bytes for registered users (10737418240 bytes = 10 GB)"
+          "description": "Maximum storage quota in bytes for registered users (2147483648 bytes = 2 GB)"
         },
         "storageUsedBytes": {
           "type": "number",
@@ -133,7 +133,7 @@
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Owner-only user profile document with persistent 10GB storage tier and usage"
+      "description": "Owner-only user profile document with persistent 2GB storage tier and usage"
     },
     "/users/{userId}/files/{fileId}": {
       "schema": { "$ref": "#/entities/UserFileRecord" },

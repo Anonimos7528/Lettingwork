@@ -15,9 +15,16 @@ import {
   Copy,
   ExternalLink,
   FolderOpen,
+  Minimize2,
+  Loader2,
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { formatBytes } from '../i18n';
+import {
+  compressFileInBrowser,
+  isFileCompressible,
+  replaceExtension,
+} from '../utils/browserCompress';
 import type {
   ExpirationPreset,
   FileCollectionSummary,
@@ -27,7 +34,10 @@ import type {
 interface QueuedFileItem {
   id: string;
   file: File;
+  originalFile: File;
+  compressedFile: File | null;
   customName: string;
+  compressionStatus: 'idle' | 'compressing' | 'compressed' | 'unchanged' | 'unsupported';
 }
 
 interface UploadModalProps {
@@ -88,9 +98,12 @@ export function UploadModal({
   );
   const [queue, setQueue] = useState<QueuedFileItem[]>([]);
   const [password, setPassword] = useState('');
-  const [expiresPreset, setExpiresPreset] = useState<ExpirationPreset>('never');
+  const [expiresPreset, setExpiresPreset] = useState<ExpirationPreset>('7d');
   const [createCollection, setCreateCollection] = useState(false);
   const [collectionTitle, setCollectionTitle] = useState('');
+  const [compressEnabled, setCompressEnabled] = useState(true);
+  const compressEnabledRef = useRef(true);
+  compressEnabledRef.current = compressEnabled;
 
   // Progress state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -106,30 +119,140 @@ export function UploadModal({
   const [createdCollection, setCreatedCollection] = useState<FileCollectionSummary | null>(null);
 
   const totalQueueBytes = queue.reduce((acc, item) => acc + item.file.size, 0);
+  const totalOriginalBytes = queue.reduce((acc, item) => acc + item.originalFile.size, 0);
+  const totalSavedBytes = Math.max(0, totalOriginalBytes - totalQueueBytes);
+  const hasCompressibleItems = queue.some((item) => item.compressionStatus !== 'unsupported');
+  const isCompressing = queue.some((item) => item.compressionStatus === 'compressing');
   const exceedsQuota = (extraBytes: number) => storageUsedBytes + extraBytes > storageLimitBytes;
 
-  const addFilesToQueue = (files: File[]) => {
-    if (!files || files.length === 0) return;
-    const nextItems: QueuedFileItem[] = files.map((file, idx) => ({
-      id: `${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
-      file,
-      customName: file.name,
-    }));
-
-    setQueue((prev) => {
-      const merged = [...prev, ...nextItems];
-      const mergedBytes = merged.reduce((acc, q) => acc + q.file.size, 0);
-      if (exceedsQuota(mergedBytes)) {
+  useEffect(() => {
+    if (queue.length === 0 || isCompressing) return;
+    if (stage !== 'ready' && stage !== 'quota_exceeded') return;
+    if (storageUsedBytes + totalQueueBytes > storageLimitBytes) {
+      if (stage !== 'quota_exceeded') {
         setStage('quota_exceeded');
         onToast(
           isAuthenticated ? t.quota_account_exceeded_title : t.quota_guest_exceeded_title,
           true
         );
-      } else {
-        setStage('ready');
       }
-      return merged;
+    } else if (stage === 'quota_exceeded') {
+      setStage('ready');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, isCompressing, storageUsedBytes, storageLimitBytes, stage]);
+
+  const runCompressionForItems = async (itemsToCompress: QueuedFileItem[]) => {
+    for (const target of itemsToCompress) {
+      const res = await compressFileInBrowser(target.originalFile);
+      setQueue((prev) =>
+        prev.map((q) => {
+          if (q.id !== target.id) return q;
+          if (!res.compressed) {
+            return {
+              ...q,
+              file: q.originalFile,
+              compressedFile: null,
+              compressionStatus: 'unchanged' as const,
+            };
+          }
+          const active = compressEnabledRef.current;
+          const nextExtMatch = res.file.name.lastIndexOf('.');
+          const nextExt = nextExtMatch >= 0 ? res.file.name.slice(nextExtMatch) : '';
+          return {
+            ...q,
+            compressedFile: res.file,
+            file: active ? res.file : q.originalFile,
+            customName:
+              active && nextExt ? replaceExtension(q.customName, nextExt) : q.customName,
+            compressionStatus: 'compressed' as const,
+          };
+        })
+      );
+    }
+  };
+
+  const handleToggleCompress = (nextEnabled: boolean) => {
+    setCompressEnabled(nextEnabled);
+    compressEnabledRef.current = nextEnabled;
+
+    const toCompress: QueuedFileItem[] = [];
+    queue.forEach((item) => {
+      if (nextEnabled && item.compressionStatus === 'idle') {
+        toCompress.push(item);
+      }
     });
+
+    setQueue((prev) =>
+      prev.map((item) => {
+        if (item.compressionStatus === 'unsupported') return item;
+
+        if (!nextEnabled) {
+          const origExtIdx = item.originalFile.name.lastIndexOf('.');
+          const origExt = origExtIdx >= 0 ? item.originalFile.name.slice(origExtIdx) : '';
+          return {
+            ...item,
+            file: item.originalFile,
+            customName: origExt ? replaceExtension(item.customName, origExt) : item.customName,
+          };
+        }
+
+        if (item.compressedFile) {
+          const compExtIdx = item.compressedFile.name.lastIndexOf('.');
+          const compExt = compExtIdx >= 0 ? item.compressedFile.name.slice(compExtIdx) : '';
+          return {
+            ...item,
+            file: item.compressedFile,
+            customName: compExt ? replaceExtension(item.customName, compExt) : item.customName,
+          };
+        }
+
+        if (item.compressionStatus === 'idle') {
+          return {
+            ...item,
+            compressionStatus: 'compressing',
+          };
+        }
+        return item;
+      })
+    );
+
+    if (toCompress.length > 0) {
+      setStage('ready');
+      void runCompressionForItems(toCompress);
+    }
+  };
+
+  const addFilesToQueue = (files: File[]) => {
+    if (!files || files.length === 0) return;
+    const shouldAutoCompress = compressEnabledRef.current;
+    const toCompress: QueuedFileItem[] = [];
+
+    const nextItems: QueuedFileItem[] = files.map((file, idx) => {
+      const compressible = isFileCompressible(file);
+      const status: QueuedFileItem['compressionStatus'] = !compressible
+        ? 'unsupported'
+        : shouldAutoCompress
+          ? 'compressing'
+          : 'idle';
+      const item: QueuedFileItem = {
+        id: `${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        originalFile: file,
+        compressedFile: null,
+        customName: file.name,
+        compressionStatus: status,
+      };
+      if (status === 'compressing') toCompress.push(item);
+      return item;
+    });
+
+    setQueue((prev) => [...prev, ...nextItems]);
+    setStage('ready');
+
+    if (toCompress.length > 0) {
+      void runCompressionForItems(toCompress);
+    }
   };
 
   useEffect(() => {
@@ -145,7 +268,7 @@ export function UploadModal({
     setStage('idle');
     setQueue([]);
     setPassword('');
-    setExpiresPreset('never');
+    setExpiresPreset('7d');
     setCreateCollection(false);
     setCollectionTitle('');
     setUploadedResults([]);
@@ -639,6 +762,16 @@ export function UploadModal({
               >
                 {t.btn_change_file}
               </button>
+              {!compressEnabled && hasCompressibleItems && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleCompress(true)}
+                  className="px-4 py-2.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 text-emerald-300 text-xs sm:text-sm font-semibold flex items-center gap-2 cursor-pointer"
+                >
+                  <Minimize2 className="w-4 h-4" />
+                  <span>{t.compress_quota_cta}</span>
+                </button>
+              )}
               {!isAuthenticated && (
                 <button
                   type="button"
@@ -714,8 +847,34 @@ export function UploadModal({
                         className="w-full bg-transparent border-b border-white/10 focus:border-cyan-400/70 focus:outline-none text-xs sm:text-sm text-white py-0.5"
                       />
                     </div>
-                    <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
-                      {formatBytes(item.file.size)}
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 tabular-nums mt-0.5">
+                      <span>{formatBytes(item.file.size)}</span>
+                      {item.compressionStatus === 'compressing' && (
+                        <span className="inline-flex items-center gap-1 text-cyan-300">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>{t.compress_working}</span>
+                        </span>
+                      )}
+                      {compressEnabled &&
+                        item.compressionStatus === 'compressed' &&
+                        item.compressedFile &&
+                        item.originalFile.size > item.compressedFile.size && (
+                          <span className="text-emerald-400 font-medium">
+                            {formatBytes(item.originalFile.size)} → {formatBytes(item.compressedFile.size)} (-
+                            {Math.max(
+                              1,
+                              Math.round(
+                                ((item.originalFile.size - item.compressedFile.size) /
+                                  item.originalFile.size) *
+                                  100
+                              )
+                            )}
+                            %)
+                          </span>
+                        )}
+                      {compressEnabled && item.compressionStatus === 'unchanged' && (
+                        <span className="text-slate-500">{t.compress_already_optimal}</span>
+                      )}
                     </div>
                   </div>
                   <button
@@ -737,6 +896,43 @@ export function UploadModal({
             </div>
 
             <p className="text-[11px] text-slate-400">{t.upload_filename_hint}</p>
+
+            {/* Browser-side Image & Document Compression Switch */}
+            {hasCompressibleItems && (
+              <div className="rounded-lg bg-emerald-500/[0.06] border border-emerald-400/20 p-3 flex items-center justify-between gap-3">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={compressEnabled}
+                    onChange={(e) => handleToggleCompress(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded accent-emerald-400 cursor-pointer shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-100 flex items-center gap-1.5">
+                      <Minimize2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{t.compress_toggle_label}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {isCompressing
+                        ? t.compress_working
+                        : compressEnabled && totalSavedBytes > 0 && totalOriginalBytes > 0
+                          ? (t.compress_saved_badge || 'Saved {saved} (-{pct}%)')
+                              .replace('{saved}', formatBytes(totalSavedBytes))
+                              .replace(
+                                '{pct}',
+                                String(
+                                  Math.max(
+                                    1,
+                                    Math.round((totalSavedBytes / totalOriginalBytes) * 100)
+                                  )
+                                )
+                              )
+                          : t.compress_toggle_desc}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            )}
 
             {/* Optional Security & Expiration controls */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-white/[0.08]">
@@ -819,10 +1015,15 @@ export function UploadModal({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer"
+                disabled={isCompressing}
+                className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer"
               >
-                <Upload className="w-4 h-4" />
-                <span>{t.btn_start_upload}</span>
+                {isCompressing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                <span>{isCompressing ? t.compress_working : t.btn_start_upload}</span>
               </button>
             </div>
           </form>

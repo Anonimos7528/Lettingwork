@@ -17,8 +17,10 @@ const DB_PATH = path.resolve(WRITABLE_BASE_DIR, 'lettingwork.db');
 const PORT = Number(process.env.PORT || 3000);
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per upload (local/node)
 const SUPABASE_FREE_MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB max single file on Supabase Free
-const GUEST_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB free guest tier
-const REGISTERED_QUOTA_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB registered tier
+const GUEST_QUOTA_BYTES = 500 * 1024 * 1024; // 500 MB free guest tier
+const REGISTERED_QUOTA_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB registered tier
+const CLOUD_POOL_LIMIT_BYTES = Math.floor(9.5 * 1024 * 1024 * 1024); // 9.5 GB shared cloud safety cap (10 GB B2 pool)
+const REGISTERED_STORAGE_TIER = 'free_2gb';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const SESSION_COOKIE_NAME = 'lw_session';
 const GUEST_COOKIE_NAME = 'lw_guest';
@@ -227,8 +229,8 @@ async function initDatabase(): Promise<void> {
     `ALTER TABLE files ADD COLUMN password_salt TEXT;`,
     `ALTER TABLE files ADD COLUMN expires_at TEXT;`,
     `ALTER TABLE files ADD COLUMN storage_provider TEXT NOT NULL DEFAULT 'local';`,
-    `ALTER TABLE users ADD COLUMN storage_tier TEXT NOT NULL DEFAULT 'free_10gb';`,
-    `ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER NOT NULL DEFAULT 10737418240;`,
+    `ALTER TABLE users ADD COLUMN storage_tier TEXT NOT NULL DEFAULT 'free_2gb';`,
+    `ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER NOT NULL DEFAULT 2147483648;`,
   ]) {
     try {
       db.exec(alterSql);
@@ -430,6 +432,13 @@ function getGuestStorageUsage(guestId: string): number {
   const row = db
     .prepare('SELECT COALESCE(SUM(size_bytes), 0) AS total FROM files WHERE user_id IS NULL AND guest_id = ?')
     .get(guestId) as { total: number } | undefined;
+  return Number(row?.total || 0);
+}
+
+function getTotalStoredBytes(): number {
+  const row = db
+    .prepare('SELECT COALESCE(SUM(size_bytes), 0) AS total FROM files')
+    .get() as { total: number } | undefined;
   return Number(row?.total || 0);
 }
 
@@ -779,6 +788,34 @@ async function removeStoredFile(row: Pick<FileRow, 'id' | 'stored_name' | 'stora
   }
 }
 
+let lastExpiredCleanupAt = 0;
+
+async function cleanupExpiredFiles(force = false): Promise<number> {
+  const now = Date.now();
+  if (!force && now - lastExpiredCleanupAt < 60_000) return 0;
+  lastExpiredCleanupAt = now;
+
+  const candidates = db
+    .prepare(
+      `SELECT id, stored_name, storage_provider, expires_at
+       FROM files
+       WHERE expires_at IS NOT NULL`
+    )
+    .all() as Array<Pick<FileRow, 'id' | 'stored_name' | 'storage_provider' | 'expires_at'>>;
+
+  let removed = 0;
+  for (const row of candidates) {
+    if (isFileExpired(row)) {
+      await removeStoredFile(row);
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    scheduleDbSync();
+  }
+  return removed;
+}
+
 let cachedFirebaseJwks: { keys: Record<string, crypto.JsonWebKey>; expiresAt: number } | null = null;
 
 async function getFirebaseJwks(): Promise<Record<string, crypto.JsonWebKey>> {
@@ -881,7 +918,7 @@ Información clave sobre LettingWork que debes conocer:
 - Subida de archivos y nombre personalizado: Permite arrastrar y soltar o seleccionar archivos de hasta 500 MB por subida sin compresión forzada ni captchas, y cambiar el nombre del archivo antes de subirlo o posteriormente desde "Tus Subidas Recientes".
 - Enlaces, vista previa y descarga: Cada archivo genera un enlace único (/f/<id>), un código QR y permite ver o reproducir directamente vídeos, imágenes, audios o documentos PDF en el navegador, además de descargar el archivo completo.
 - Borrado seguro: Cada archivo cuenta con un token privado de eliminación verificado en servidor; los usuarios registrados pueden gestionar, renombrar y borrar sus archivos desde "Tus Subidas Recientes".
-- Cuentas y almacenamiento: Sin registro (Modo Invitado) se ofrecen 5 GB gratuitos. Al crear una cuenta gratuita (con correo/contraseña o con Google), el almacenamiento sube automáticamente a 10 GB gratuitos y los archivos quedan sincronizados entre dispositivos.
+- Cuentas y almacenamiento: Sin registro (Modo Invitado) se ofrecen 500 MB gratuitos. Al crear una cuenta gratuita (con correo/contraseña o con Google), el almacenamiento sube automáticamente a 2 GB gratuitos y los archivos quedan sincronizados entre dispositivos. Los enlaces caducan en 7 días por defecto (configurable) para mantener el espacio compartido disponible para todos.
 - Idiomas disponibles: Español, Inglés, Italiano, Alemán, Francés, Portugués y Neerlandés (Bélgica), accesibles desde el menú inferior.
 
 Reglas de respuesta:
@@ -1145,8 +1182,8 @@ export async function createApp() {
     const { hash, salt } = hashPassword(password);
     db.prepare(
       `INSERT INTO users (id, username, email, password_hash, salt, storage_tier, storage_limit_bytes)
-       VALUES (?, ?, ?, ?, ?, 'free_10gb', ?)`
-    ).run(userId, username, email, hash, salt, REGISTERED_QUOTA_BYTES);
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(userId, username, email, hash, salt, REGISTERED_STORAGE_TIER, REGISTERED_QUOTA_BYTES);
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
@@ -1165,7 +1202,7 @@ export async function createApp() {
         username,
         email,
         provider: 'password',
-        storage_tier: 'free_10gb',
+        storage_tier: REGISTERED_STORAGE_TIER,
         storage_limit_bytes: REGISTERED_QUOTA_BYTES,
         storage_used_bytes: 0,
       },
@@ -1216,7 +1253,7 @@ export async function createApp() {
         username: user.username,
         email: user.email,
         provider: 'password',
-        storage_tier: 'free_10gb',
+        storage_tier: REGISTERED_STORAGE_TIER,
         storage_limit_bytes: REGISTERED_QUOTA_BYTES,
         storage_used_bytes: getUserStorageUsage(user.id),
       },
@@ -1237,7 +1274,7 @@ export async function createApp() {
         username: user.username,
         email: user.email,
         provider: 'password',
-        storage_tier: 'free_10gb',
+        storage_tier: REGISTERED_STORAGE_TIER,
         storage_limit_bytes: REGISTERED_QUOTA_BYTES,
         storage_used_bytes: getUserStorageUsage(user.id),
       },
@@ -1284,7 +1321,7 @@ export async function createApp() {
     res.json({
       success: true,
       files: rows,
-      storage_tier: 'free_10gb',
+      storage_tier: REGISTERED_STORAGE_TIER,
       storage_limit_bytes: REGISTERED_QUOTA_BYTES,
       storage_used_bytes: getUserStorageUsage(user.id),
     });
@@ -1668,6 +1705,7 @@ export async function createApp() {
     }
 
     await refreshDbIfServerlessMissing(false);
+    await cleanupExpiredFiles();
     const sessionUser = getSessionUser(req);
     const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
     const ownerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
@@ -1702,10 +1740,23 @@ export async function createApp() {
         limit_bytes: quotaLimit,
         used_bytes: currentUsedBytes,
         error: ownerUserId
-          ? '10 GB storage limit reached.'
-          : '5 GB free guest limit reached. Sign up free to unlock 10 GB.',
+          ? '2 GB storage limit reached.'
+          : '500 MB free guest limit reached. Sign up free to unlock 2 GB.',
       });
       return;
+    }
+
+    if (getTotalStoredBytes() + sizeBytes > CLOUD_POOL_LIMIT_BYTES) {
+      await cleanupExpiredFiles(true);
+      if (getTotalStoredBytes() + sizeBytes > CLOUD_POOL_LIMIT_BYTES) {
+        res.status(413).json({
+          success: false,
+          code: 'POOL_FULL',
+          error:
+            'El almacenamiento gratuito compartido está lleno temporalmente. Borra archivos antiguos o inténtalo más tarde.',
+        });
+        return;
+      }
     }
 
     const rawPassword = typeof req.body?.password === 'string' ? req.body.password.slice(0, 128) : '';
@@ -1833,6 +1884,7 @@ export async function createApp() {
       return;
     }
 
+    await cleanupExpiredFiles();
     const sessionUser = getSessionUser(req);
     const verifiedFirebaseUid = sessionUser ? null : await verifyFirebaseIdToken(req);
     const ownerUserId = sessionUser ? sessionUser.id : verifiedFirebaseUid;
@@ -1885,8 +1937,8 @@ export async function createApp() {
           limit_bytes: quotaLimit,
           used_bytes: currentUsedBytes,
           error: ownerUserId
-            ? '10 GB storage limit reached.'
-            : '5 GB free guest limit reached. Sign up free to unlock 10 GB.',
+            ? '2 GB storage limit reached.'
+            : '500 MB free guest limit reached. Sign up free to unlock 2 GB.',
         });
         return;
       }
@@ -1919,8 +1971,8 @@ export async function createApp() {
               limit_bytes: quotaLimit,
               used_bytes: currentUsedBytes,
               error: ownerUserId
-                ? '10 GB storage limit reached.'
-                : '5 GB free guest limit reached. Sign up free to unlock 10 GB.',
+                ? '2 GB storage limit reached.'
+                : '500 MB free guest limit reached. Sign up free to unlock 2 GB.',
             });
           }
           req.destroy();
@@ -2013,8 +2065,8 @@ export async function createApp() {
           limit_bytes: quotaLimit,
           used_bytes: currentUsedBytes,
           error: ownerUserId
-            ? '10 GB storage limit reached.'
-            : '5 GB free guest limit reached. Sign up free to unlock 10 GB.',
+            ? '2 GB storage limit reached.'
+            : '500 MB free guest limit reached. Sign up free to unlock 2 GB.',
         });
         return;
       }

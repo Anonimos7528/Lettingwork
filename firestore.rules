@@ -63,12 +63,12 @@ service cloud.firestore {
         && data.provider in ['google', 'password']
         && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 512))
         && data.storageTier is string
-        && data.storageTier == 'free_10gb'
+        && data.storageTier == 'free_2gb'
         && data.storageLimitBytes is number
-        && data.storageLimitBytes == 10737418240
+        && data.storageLimitBytes == 2147483648
         && data.storageUsedBytes is number
         && data.storageUsedBytes >= 0
-        && data.storageUsedBytes <= 10737418240
+        && data.storageUsedBytes <= 2147483648
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -134,8 +134,8 @@ service cloud.firestore {
           && isValidUserFile(incoming(), userId, fileId)
           && incoming().createdAt == request.time
           && exists(/databases/$(database)/documents/users/$(userId))
-          && getAfter(/databases/$(database)/documents/users/$(userId)).data.storageLimitBytes == 10737418240
-          && getAfter(/databases/$(database)/documents/users/$(userId)).data.storageUsedBytes <= 10737418240;
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.storageLimitBytes == 2147483648
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.storageUsedBytes <= 2147483648;
         allow update: if isOwner(userId)
           && isValidId(userId)
           && isValidId(fileId)

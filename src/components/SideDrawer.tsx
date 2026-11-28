@@ -64,8 +64,8 @@ export function SideDrawer({
     };
   }, [isOpen]);
 
-  const maxBytes = storageLimitBytes > 0 ? storageLimitBytes : (user ? 10 : 5) * 1024 * 1024 * 1024;
-  const maxGb = Math.round(maxBytes / (1024 * 1024 * 1024));
+  const maxBytes = storageLimitBytes > 0 ? storageLimitBytes : (user ? 2 * 1024 * 1024 * 1024 : 500 * 1024 * 1024);
+  const maxLabel = formatBytes(maxBytes, 0);
   const pct =
     storageUsedBytes > 0
       ? Math.max(1, Math.min(100, Math.round((storageUsedBytes / maxBytes) * 100)))
@@ -185,7 +185,7 @@ export function SideDrawer({
 
           <PWAInstallButton t={t} variant="drawer" />
 
-          {/* Cloud Storage Meter (5 GB Guest -> 10 GB Registered) */}
+          {/* Cloud Storage Meter (500 MB Guest -> 2 GB Registered) */}
           <div className="rounded-lg bg-white/[0.02] border border-white/10 p-4">
             <div className="flex items-center justify-between text-xs mb-2.5 gap-2">
               <div className="font-semibold text-slate-200 flex items-center gap-1.5">
@@ -203,8 +203,8 @@ export function SideDrawer({
               />
             </div>
             <div className="flex justify-between text-xs text-slate-400 tabular-nums">
-              <span>{formatBytes(storageUsedBytes)} / {maxGb} GB</span>
-              <span>{user ? '10 GB' : t.drawer_storage_unmetered}</span>
+              <span>{formatBytes(storageUsedBytes)} / {maxLabel}</span>
+              <span>{user ? maxLabel : t.drawer_storage_unmetered}</span>
             </div>
             {!user && (
               <button

@@ -53,7 +53,7 @@ export interface CollectionDetailResponse {
   }>;
 }
 
-export type StorageTier = 'guest_5gb' | 'free_10gb';
+export type StorageTier = 'guest_500mb' | 'free_2gb';
 
 export interface ActiveUser {
   uid: string;
@@ -72,7 +72,7 @@ export interface FirestoreUserProfile {
   email: string;
   provider: 'google' | 'password';
   photoUrl?: string;
-  storageTier: 'free_10gb';
+  storageTier: 'free_2gb';
   storageLimitBytes: number;
   storageUsedBytes: number;
 }

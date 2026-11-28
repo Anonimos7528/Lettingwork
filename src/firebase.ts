@@ -17,9 +17,9 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-export const GUEST_STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
-export const REGISTERED_STORAGE_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
-export const STORAGE_TIER_REGISTERED = 'free_10gb' as const;
+export const GUEST_STORAGE_LIMIT_BYTES = 500 * 1024 * 1024; // 500 MB
+export const REGISTERED_STORAGE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+export const STORAGE_TIER_REGISTERED = 'free_2gb' as const;
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);

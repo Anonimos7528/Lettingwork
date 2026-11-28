@@ -319,7 +319,7 @@ function LettingWorkApp() {
             username: data.user.username,
             email: data.user.email,
             provider: 'password',
-            storageTier: data.user.storage_tier || 'free_10gb',
+            storageTier: data.user.storage_tier || STORAGE_TIER_REGISTERED,
             storageLimitBytes: data.user.storage_limit_bytes || REGISTERED_STORAGE_LIMIT_BYTES,
             storageUsedBytes: data.user.storage_used_bytes || 0,
           });
@@ -372,10 +372,7 @@ function LettingWorkApp() {
           provider: data.provider === 'password' ? 'password' : 'google',
           photoUrl: typeof data.photoUrl === 'string' ? data.photoUrl : undefined,
           storageTier: STORAGE_TIER_REGISTERED,
-          storageLimitBytes:
-            typeof data.storageLimitBytes === 'number'
-              ? data.storageLimitBytes
-              : REGISTERED_STORAGE_LIMIT_BYTES,
+          storageLimitBytes: REGISTERED_STORAGE_LIMIT_BYTES,
           storageUsedBytes: typeof data.storageUsedBytes === 'number' ? data.storageUsedBytes : 0,
         });
       },
@@ -1285,7 +1282,7 @@ function LettingWorkApp() {
                   <div className="text-xs text-slate-400 mt-1">{t.metric_queues}</div>
                 </div>
                 <div className="px-3">
-                  <div className="text-2xl font-bold text-cyan-400 tabular-nums">5–10 GB</div>
+                  <div className="text-2xl font-bold text-cyan-400 tabular-nums">500 MB – 2 GB</div>
                   <div className="text-xs text-slate-400 mt-1">{t.drawer_storage_title}</div>
                 </div>
                 <div className="px-3">
